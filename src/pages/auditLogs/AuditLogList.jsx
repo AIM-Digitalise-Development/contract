@@ -85,7 +85,7 @@ export default function AuditLogList() {
     const data = safeLogs.map((log) => {
       const entity = (log.auditable_type || log.entity_type || '').split('\\').pop();
       return {
-        log_id: log.id,
+        log_id: String(log.id).replace(/^#+/, ''),
         date: log.created_at ? new Date(log.created_at).toLocaleString() : '',
         user: log.user?.name || log.user_name || 'System / Automated',
         action: log.event || log.action || '',

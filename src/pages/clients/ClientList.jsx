@@ -50,6 +50,8 @@ export default function ClientList({ embedded = false }) {
   const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
 
   // Modal State
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -184,28 +186,54 @@ export default function ClientList({ embedded = false }) {
     }
   };
 
-  const handleExportCSV = () => {
-    if (!clients || clients.length === 0) {
-      toast.warning('No client records to export.');
-      return;
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      let exportData = clients;
+      try {
+        const res = await clientService.getClients({
+          per_page: 2000,
+          search: debouncedSearch || undefined,
+          status: statusFilter || undefined,
+          location: locationFilter || undefined,
+        });
+        if (res?.data?.items && res.data.items.length > 0) {
+          exportData = res.data.items;
+        }
+      } catch (e) {
+        console.warn('Fallback to loaded page clients for CSV export:', e);
+      }
+
+      if (!exportData || exportData.length === 0) {
+        toast.warning('No client records found to export with currently applied filters.');
+        return;
+      }
+
+      const headers = [
+        { key: 'id', label: 'Client ID' },
+        { key: 'created_at', label: 'Date' },
+        { key: 'name', label: 'Client Name' },
+        { key: 'contact_number', label: 'Contact Number' },
+        { key: 'location', label: 'Work Location' },
+        { key: 'work_details', label: 'Work Details' },
+        { key: 'materials_required', label: 'Materials Required' },
+        { key: 'status', label: 'Status' },
+        { key: 'description', label: 'Description' },
+      ];
+      const data = exportData.map((c) => ({
+        ...c,
+        id: String(c.id).replace(/^#+/, ''),
+        created_at: c.created_at ? new Date(c.created_at).toLocaleDateString() : '',
+        contact_number: formatIndianPhone(c.contact_number),
+      }));
+
+      exportToCSV('clients_export', headers, data);
+      toast.success(`Exported ${exportData.length} filtered client records.`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = [
-      { key: 'id', label: 'Client ID' },
-      { key: 'created_at', label: 'Date' },
-      { key: 'name', label: 'Client Name' },
-      { key: 'contact_number', label: 'Contact Number' },
-      { key: 'location', label: 'Work Location' },
-      { key: 'work_details', label: 'Work Details' },
-      { key: 'materials_required', label: 'Materials Required' },
-      { key: 'status', label: 'Status' },
-      { key: 'description', label: 'Description' },
-    ];
-    const data = clients.map((c) => ({
-      ...c,
-      created_at: c.created_at ? new Date(c.created_at).toLocaleDateString() : '',
-      contact_number: formatIndianPhone(c.contact_number),
-    }));
-    exportToCSV('clients_export', headers, data);
   };
 
   return (
@@ -219,6 +247,7 @@ export default function ClientList({ embedded = false }) {
             <Button
               variant="secondary"
               onClick={handleExportCSV}
+              loading={isExporting}
               className="flex items-center gap-1.5 text-xs text-slate-700 hover:text-slate-900 border-slate-200"
             >
               <Download className="w-3.5 h-3.5" />
@@ -244,6 +273,7 @@ export default function ClientList({ embedded = false }) {
             <Button
               variant="secondary"
               onClick={handleExportCSV}
+              loading={isExporting}
               className="flex items-center gap-1.5 text-xs text-slate-700 hover:text-slate-900 border-slate-200"
             >
               <Download className="w-3.5 h-3.5" />

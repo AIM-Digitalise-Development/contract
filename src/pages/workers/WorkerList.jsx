@@ -37,6 +37,8 @@ export default function WorkerList() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
 
   // Assign Stock Modal State
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -280,30 +282,55 @@ export default function WorkerList() {
     }
   }
 
-  const handleExportCSV = () => {
-    if (!workers || workers.length === 0) {
-      toast.warning('No worker records to export.');
-      return;
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      let exportData = workers;
+      try {
+        const res = await employeeService.getEmployees({
+          per_page: 2000,
+          role: 'worker',
+          search: debouncedSearch || undefined,
+          status: statusFilter || undefined,
+        });
+        if (res?.data?.items && res.data.items.length > 0) {
+          exportData = res.data.items;
+        }
+      } catch (e) {
+        console.warn('Fallback to loaded page workers for CSV export:', e);
+      }
+
+      if (!exportData || exportData.length === 0) {
+        toast.warning('No worker records found to export with currently applied filters.');
+        return;
+      }
+
+      const headers = [
+        { key: 'emp_id', label: 'Worker ID' },
+        { key: 'date_joined', label: 'Date Joined' },
+        { key: 'name', label: 'Worker Name' },
+        { key: 'phone', label: 'Contact Phone' },
+        { key: 'email', label: 'Email Address' },
+        { key: 'department', label: 'Department' },
+        { key: 'status', label: 'Status' },
+      ];
+      const data = exportData.map((w) => ({
+        emp_id: `EMP-${w.id}`,
+        date_joined: w.created_at ? new Date(w.created_at).toLocaleDateString() : '',
+        name: w.name,
+        phone: formatIndianPhone(w.phone),
+        email: w.email || '',
+        department: w.department || 'Operations',
+        status: w.is_active ? 'Active' : 'Inactive',
+      }));
+
+      exportToCSV('workers_export', headers, data);
+      toast.success(`Exported ${exportData.length} filtered worker records.`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = [
-      { key: 'emp_id', label: 'Worker ID' },
-      { key: 'date_joined', label: 'Date Joined' },
-      { key: 'name', label: 'Worker Name' },
-      { key: 'phone', label: 'Contact Phone' },
-      { key: 'email', label: 'Email Address' },
-      { key: 'department', label: 'Department' },
-      { key: 'status', label: 'Status' },
-    ];
-    const data = workers.map((w) => ({
-      emp_id: `EMP-${w.id}`,
-      date_joined: w.created_at ? new Date(w.created_at).toLocaleDateString() : '',
-      name: w.name,
-      phone: formatIndianPhone(w.phone),
-      email: w.email || '',
-      department: w.department || 'Operations',
-      status: w.is_active ? 'Active' : 'Inactive',
-    }));
-    exportToCSV('workers_export', headers, data);
   };
 
   const selectedClientObj = clients.find((c) => String(c.id) === String(assignForm.client_id));
@@ -318,6 +345,7 @@ export default function WorkerList() {
             <Button
               variant="secondary"
               onClick={handleExportCSV}
+              loading={isExporting}
               className="flex items-center gap-1.5 text-xs text-slate-700 hover:text-slate-900 border-slate-200"
             >
               <Download className="w-3.5 h-3.5" />

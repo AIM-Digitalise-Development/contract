@@ -37,6 +37,8 @@ export default function EmployeeList({ embedded = false }) {
   const debouncedSearch = useDebounce(search, 300);
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -225,8 +227,29 @@ export default function EmployeeList({ embedded = false }) {
     }
   }
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    setIsExporting(true);
     try {
+      let exportData = employees;
+      try {
+        const res = await employeeService.getEmployees({
+          per_page: 2000,
+          search: debouncedSearch || undefined,
+          role: roleFilter || undefined,
+          status: statusFilter || undefined,
+        });
+        if (res?.data?.items && res.data.items.length > 0) {
+          exportData = res.data.items;
+        }
+      } catch (e) {
+        console.warn('Fallback to loaded page employees for CSV export:', e);
+      }
+
+      if (!exportData || exportData.length === 0) {
+        toast.warning('No personnel records found to export with currently applied filters.');
+        return;
+      }
+
       exportToCSV({
         filename: `Personnel_List_${new Date().toISOString().slice(0, 10)}.csv`,
         columns: [
@@ -239,11 +262,13 @@ export default function EmployeeList({ embedded = false }) {
           { label: 'Portal Access', format: (e) => (e.role?.slug === 'worker' ? 'No' : 'Yes') },
           { label: 'Status', key: 'status' },
         ],
-        data: employees,
+        data: exportData,
       });
-      toast.success(`Exported ${employees.length} personnel records.`);
+      toast.success(`Exported ${exportData.length} filtered personnel records.`);
     } catch (err) {
       toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -258,7 +283,12 @@ export default function EmployeeList({ embedded = false }) {
           subtitle="Manage administrative staff, warehouse supervisors, managers, and operational workers."
         >
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+            <Button 
+              variant="secondary" 
+              onClick={handleExportCSV} 
+              loading={isExporting}
+              className="text-xs font-semibold cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
@@ -276,7 +306,13 @@ export default function EmployeeList({ embedded = false }) {
             <p className="text-xs text-slate-500">Manage administrator, supervisor, manager, and worker accounts.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              onClick={handleExportCSV} 
+              loading={isExporting}
+              className="text-xs font-semibold cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>

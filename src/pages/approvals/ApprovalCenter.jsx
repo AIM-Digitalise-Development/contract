@@ -181,6 +181,10 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
   const handleExportCSV = () => {
     try {
       if (activeTab === 'worker_stock') {
+        if (!safeWorkerRequests || safeWorkerRequests.length === 0) {
+          toast.warning('No pending worker stock requests found to export.');
+          return;
+        }
         exportToCSV({
           filename: `Worker_Stock_Approvals_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
@@ -205,6 +209,10 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
         });
         toast.success(`Exported ${safeWorkerRequests.length} pending worker approvals.`);
       } else {
+        if (!safeTransfers || safeTransfers.length === 0) {
+          toast.warning('No pending godown transfers found to export.');
+          return;
+        }
         exportToCSV({
           filename: `Godown_Transfer_Approvals_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [

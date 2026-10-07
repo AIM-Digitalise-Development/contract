@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce';
@@ -176,6 +176,19 @@ export default function AuditEntry() {
     dateTo
   );
 
+  const totalLoadedAmountSpent = useMemo(() => {
+    if (!Array.isArray(records)) return 0;
+    return records.reduce((sum, r) => {
+      let amount = 0;
+      if (Array.isArray(r?.items) && r.items.length > 0) {
+        amount = r.items.reduce((s, it) => s + (Number(it?.quantity || 0) * Number(it?.product?.purchase_rate || 0)), 0);
+      } else if (r?.product) {
+        amount = Number(r.quantity || 0) * Number(r.product?.purchase_rate || 0);
+      }
+      return sum + amount;
+    }, 0);
+  }, [records]);
+
   // Fix Export to CSV: Uses exportToCSV utility, respects currently applied filters, no '#' bugs
   const handleExportCSV = async () => {
     setExporting(true);
@@ -220,6 +233,7 @@ export default function AuditEntry() {
         { key: 'end_date', label: 'End Date' },
         { key: 'type', label: 'Movement Type' },
         { key: 'materials', label: 'Materials Assigned' },
+        { key: 'amount_spent', label: 'Amount Spent (₹)' },
         { key: 'status', label: 'Status' },
         { key: 'approved_by', label: 'Approved By' },
         { key: 'remarks', label: 'Remarks / Details' },
@@ -230,10 +244,13 @@ export default function AuditEntry() {
         const dateStr = r.requested_at ? new Date(r.requested_at).toLocaleDateString() : (r.created_at ? new Date(r.created_at).toLocaleDateString() : '');
         
         let materialsList = '';
+        let amountSpent = 0;
         if (Array.isArray(r.items) && r.items.length > 0) {
           materialsList = r.items.map((it) => `${it.product?.name || 'Product'}: ${it.quantity} ${it.product?.unit || 'units'}`).join('; ');
+          amountSpent = r.items.reduce((sum, it) => sum + (Number(it.quantity || 0) * Number(it.product?.purchase_rate || 0)), 0);
         } else if (r.product) {
           materialsList = `${r.product.name}: ${r.quantity} ${r.product.unit || 'units'}`;
+          amountSpent = Number(r.quantity || 0) * Number(r.product?.purchase_rate || 0);
         } else {
           materialsList = `${r.quantity || 0} units`;
         }
@@ -249,6 +266,7 @@ export default function AuditEntry() {
           end_date: r.end_date || '',
           type: r.type || '',
           materials: materialsList,
+          amount_spent: amountSpent > 0 ? `₹${amountSpent.toFixed(2)}` : '₹0.00',
           status: r.status || '',
           approved_by: r.approved_by?.name || '',
           remarks: r.remarks || r.description || '',
@@ -535,12 +553,17 @@ export default function AuditEntry() {
       {/* Main Audit Records Table */}
       {/* Rule: Serial Number / ID -> Date -> Other Information; No '#' symbol */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-600" />
             <span>Complete Work & Material Audit Trace ({pagination.total} Records)</span>
           </div>
-          <span className="text-xs text-slate-500">Live Transactional Log</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+              Page Spend: ₹{totalLoadedAmountSpent.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span className="text-xs text-slate-500">Live Transactional Log</span>
+          </div>
         </div>
 
         {loading ? (
@@ -572,6 +595,7 @@ export default function AuditEntry() {
                   <th className="px-5 py-3.5">Work / Project Scope</th>
                   <th className="px-5 py-3.5">Schedule Period</th>
                   <th className="px-5 py-3.5">Materials Assigned</th>
+                  <th className="px-5 py-3.5 text-right">Amount Spent (₹)</th>
                   <th className="px-5 py-3.5 text-center">Status</th>
                   <th className="px-5 py-3.5 text-right">Receipt Voucher</th>
                 </tr>
@@ -580,6 +604,13 @@ export default function AuditEntry() {
                 {records.map((r) => {
                   const cleanVoucher = String(r.request_number || r.id).replace(/^#+/, '');
                   const isIssue = r.type === 'ISSUE';
+
+                  let rowAmountSpent = 0;
+                  if (Array.isArray(r.items) && r.items.length > 0) {
+                    rowAmountSpent = r.items.reduce((sum, it) => sum + (Number(it.quantity || 0) * Number(it.product?.purchase_rate || 0)), 0);
+                  } else if (r.product) {
+                    rowAmountSpent = Number(r.quantity || 0) * Number(r.product?.purchase_rate || 0);
+                  }
 
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
@@ -683,7 +714,17 @@ export default function AuditEntry() {
                         </div>
                       </td>
 
-                      {/* 8. Status */}
+                      {/* 8. Amount Spent in Work */}
+                      <td className="px-5 py-3.5 align-top text-right whitespace-nowrap">
+                        <div className="font-extrabold text-slate-900 text-sm">
+                          ₹{rowAmountSpent.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {rowAmountSpent > 0 ? 'Material Cost' : '—'}
+                        </div>
+                      </td>
+
+                      {/* 9. Status */}
                       <td className="px-5 py-3.5 align-top text-center">
                         <span
                           className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${

@@ -33,6 +33,8 @@ export default function GodownList({ embedded = false }) {
   const debouncedSearch = useDebounce(search, 300);
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -157,8 +159,29 @@ export default function GodownList({ embedded = false }) {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    setIsExporting(true);
     try {
+      let exportData = godowns;
+      try {
+        const res = await godownService.getGodowns({
+          per_page: 2000,
+          search: debouncedSearch || undefined,
+          type: typeFilter || undefined,
+          status: statusFilter || undefined,
+        });
+        if (res?.data?.items && res.data.items.length > 0) {
+          exportData = res.data.items;
+        }
+      } catch (e) {
+        console.warn('Fallback to loaded page godowns for CSV export:', e);
+      }
+
+      if (!exportData || exportData.length === 0) {
+        toast.warning('No godown records found to export with currently applied filters.');
+        return;
+      }
+
       exportToCSV({
         filename: `Godown_List_${new Date().toISOString().slice(0, 10)}.csv`,
         columns: [
@@ -170,9 +193,34 @@ export default function GodownList({ embedded = false }) {
           { label: 'Active Stock', format: (g) => g.total_active_stock || 0 },
           { label: 'Status', key: 'status' },
         ],
-        data: godowns,
+        data: exportData,
       });
-      toast.success(`Exported ${godowns.length} godown records.`);
+      toast.success(`Exported ${exportData.length} filtered godown records.`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportModalStock = () => {
+    if (!detailsStock || detailsStock.length === 0) {
+      toast.warning('No active stock balance to export for this warehouse.');
+      return;
+    }
+    try {
+      exportToCSV({
+        filename: `${selectedGodown?.name || 'Godown'}_Stock_Breakdown_${new Date().toISOString().slice(0, 10)}.csv`,
+        columns: [
+          { label: 'Product Name', format: (s) => s.product?.name || 'Product' },
+          { label: 'Product Code', format: (s) => s.product?.code || '—' },
+          { label: 'Available Balance', key: 'quantity' },
+          { label: 'Unit', format: (s) => s.product?.unit || 'units' },
+          { label: 'Last Movement', format: (s) => (s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '—') },
+        ],
+        data: detailsStock,
+      });
+      toast.success(`Exported ${detailsStock.length} stock balance records.`);
     } catch (err) {
       toast.error(err.message || 'Failed to export CSV.');
     }
@@ -186,7 +234,12 @@ export default function GodownList({ embedded = false }) {
           description="Monitor, configure, and inspect Primary central hubs and Retail storage godowns."
         >
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+            <Button 
+              variant="secondary" 
+              onClick={handleExportCSV} 
+              loading={isExporting}
+              className="text-xs font-semibold cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
@@ -204,7 +257,13 @@ export default function GodownList({ embedded = false }) {
             <p className="text-xs text-slate-500">Configure Primary central hubs and Retail storage depots.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              onClick={handleExportCSV} 
+              loading={isExporting}
+              className="text-xs font-semibold cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
@@ -480,7 +539,19 @@ export default function GodownList({ embedded = false }) {
             No active stock balance recorded in this warehouse.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportModalStock}
+                className="text-xs font-semibold"
+              >
+                <Download className="w-3.5 h-3.5 mr-1" />
+                Download Stock CSV
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-100 text-slate-600 font-semibold uppercase text-[10px]">
                 <tr>
@@ -506,6 +577,7 @@ export default function GodownList({ embedded = false }) {
               </tbody>
             </table>
           </div>
+        </div>
         )}
       </Modal>
 

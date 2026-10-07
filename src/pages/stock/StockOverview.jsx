@@ -75,6 +75,7 @@ export default function StockOverview() {
   // Stock Entry Request Modal
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [submittingEntry, setSubmittingEntry] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [entryFormData, setEntryFormData] = useState({
     godown_id: '',
     product_id: '',
@@ -257,9 +258,31 @@ export default function StockOverview() {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    setIsExporting(true);
     try {
       if (activeTab === 'entries') {
+        let exportData = entries;
+        try {
+          const res = await stockService.getStockEntries({
+            per_page: 2000,
+            godown_id: godownFilter || undefined,
+            product_id: productFilter || undefined,
+            status: statusFilter || undefined,
+            search: debouncedSearch || undefined,
+          });
+          if (res?.data?.items && res.data.items.length > 0) {
+            exportData = res.data.items;
+          }
+        } catch (e) {
+          console.warn('Fallback to current page entries for CSV:', e);
+        }
+
+        if (!exportData || exportData.length === 0) {
+          toast.warning('No stock entry records found to export with currently applied filters.');
+          return;
+        }
+
         exportToCSV({
           filename: `Stock_List_Approval_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
@@ -273,10 +296,30 @@ export default function StockOverview() {
             { label: 'Status', key: 'status' },
             { label: 'Approver', format: (e) => e.approver?.name || '—' },
           ],
-          data: entries,
+          data: exportData,
         });
-        toast.success(`Exported ${entries.length} stock entry records.`);
+        toast.success(`Exported ${exportData.length} filtered stock entry records.`);
       } else if (activeTab === 'stock') {
+        let exportData = stockItems;
+        try {
+          const res = await stockService.getStock({
+            per_page: 2000,
+            godown_id: godownFilter || undefined,
+            product_id: productFilter || undefined,
+            search: debouncedSearch || undefined,
+          });
+          if (res?.data?.items && res.data.items.length > 0) {
+            exportData = res.data.items;
+          }
+        } catch (e) {
+          console.warn('Fallback to current page stock items for CSV:', e);
+        }
+
+        if (!exportData || exportData.length === 0) {
+          toast.warning('No available stock records found to export with currently applied filters.');
+          return;
+        }
+
         exportToCSV({
           filename: `Available_Stock_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
@@ -288,10 +331,30 @@ export default function StockOverview() {
             { label: 'Unit', format: (s) => s.product?.unit || 'units' },
             { label: 'Last Movement', format: (s) => (s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '—') },
           ],
-          data: stockItems,
+          data: exportData,
         });
-        toast.success(`Exported ${stockItems.length} available stock records.`);
+        toast.success(`Exported ${exportData.length} filtered available stock records.`);
       } else if (activeTab === 'godown_transactions') {
+        let exportData = transactions;
+        try {
+          const res = await stockService.getTransactions({
+            per_page: 2000,
+            category: 'godown',
+            godown_id: godownFilter || undefined,
+            product_id: productFilter || undefined,
+          });
+          if (res?.data?.items && res.data.items.length > 0) {
+            exportData = res.data.items;
+          }
+        } catch (e) {
+          console.warn('Fallback to current page godown transactions for CSV:', e);
+        }
+
+        if (!exportData || exportData.length === 0) {
+          toast.warning('No godown transactions found to export with currently applied filters.');
+          return;
+        }
+
         exportToCSV({
           filename: `Godown_Transactions_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
@@ -306,10 +369,30 @@ export default function StockOverview() {
             { label: 'Logged By', format: (t) => t.created_by?.name || 'System' },
             { label: 'Remarks', format: (t) => t.remarks || '—' },
           ],
-          data: transactions,
+          data: exportData,
         });
-        toast.success(`Exported ${transactions.length} godown transaction records.`);
+        toast.success(`Exported ${exportData.length} filtered godown transaction records.`);
       } else if (activeTab === 'worker_transactions') {
+        let exportData = transactions;
+        try {
+          const res = await stockService.getTransactions({
+            per_page: 2000,
+            category: 'worker',
+            godown_id: godownFilter || undefined,
+            product_id: productFilter || undefined,
+          });
+          if (res?.data?.items && res.data.items.length > 0) {
+            exportData = res.data.items;
+          }
+        } catch (e) {
+          console.warn('Fallback to current page worker transactions for CSV:', e);
+        }
+
+        if (!exportData || exportData.length === 0) {
+          toast.warning('No worker transactions found to export with currently applied filters.');
+          return;
+        }
+
         exportToCSV({
           filename: `Worker_Transactions_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
@@ -322,12 +405,14 @@ export default function StockOverview() {
             { label: 'Quantity', key: 'quantity' },
             { label: 'Warehouse / Logged By', format: (t) => t.godown?.name || t.created_by?.name || 'Staff' },
           ],
-          data: transactions,
+          data: exportData,
         });
-        toast.success(`Exported ${transactions.length} worker transaction records.`);
+        toast.success(`Exported ${exportData.length} filtered worker transaction records.`);
       }
     } catch (err) {
       toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -338,7 +423,12 @@ export default function StockOverview() {
         description="Inspect stock requests requiring approval, view available godown stocks, and track godown or worker transactions."
       >
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+          <Button 
+            variant="secondary" 
+            onClick={handleExportCSV} 
+            loading={isExporting}
+            className="text-xs font-semibold cursor-pointer"
+          >
             <Download className="w-3.5 h-3.5 mr-1.5" />
             Download CSV
           </Button>

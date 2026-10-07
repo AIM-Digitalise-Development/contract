@@ -57,6 +57,8 @@ export default function ProductList({ embedded = false }) {
   const [pricingQuantity, setPricingQuantity] = useState('100');
   const [unitWisePrice, setUnitWisePrice] = useState('');
   const [bulkTotalPrice, setBulkTotalPrice] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
 
   const [formData, setFormData] = useState({
     name: '',
@@ -223,8 +225,28 @@ export default function ProductList({ embedded = false }) {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    setIsExporting(true);
     try {
+      let exportData = products;
+      try {
+        const res = await productService.getProducts({
+          per_page: 2000,
+          search: debouncedSearch || undefined,
+          status: statusFilter || undefined,
+        });
+        if (res?.data?.items && res.data.items.length > 0) {
+          exportData = res.data.items;
+        }
+      } catch (e) {
+        console.warn('Fallback to loaded page products for CSV export:', e);
+      }
+
+      if (!exportData || exportData.length === 0) {
+        toast.warning('No product records found to export with currently applied filters.');
+        return;
+      }
+
       exportToCSV({
         filename: `Product_Catalog_${new Date().toISOString().slice(0, 10)}.csv`,
         columns: [
@@ -238,11 +260,13 @@ export default function ProductList({ embedded = false }) {
           { label: 'Status', key: 'status' },
           { label: 'Description', format: (p) => p.description || '' },
         ],
-        data: products,
+        data: exportData,
       });
-      toast.success(`Exported ${products.length} product records.`);
+      toast.success(`Exported ${exportData.length} filtered product records.`);
     } catch (err) {
       toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -254,7 +278,12 @@ export default function ProductList({ embedded = false }) {
           description="Manage product definitions, procurement pricing calculations, SKUs, and stock reminder alerts."
         >
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+            <Button 
+              variant="secondary" 
+              onClick={handleExportCSV} 
+              loading={isExporting}
+              className="text-xs font-semibold cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
@@ -272,7 +301,13 @@ export default function ProductList({ embedded = false }) {
             <p className="text-xs text-slate-500">Manage master product catalog, units, rate of purchase, and reorder levels.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={handleExportCSV} className="text-xs font-semibold cursor-pointer">
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              onClick={handleExportCSV} 
+              loading={isExporting}
+              className="text-xs font-semibold cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>

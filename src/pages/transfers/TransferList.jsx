@@ -39,6 +39,8 @@ export default function TransferList() {
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [destFilter, setDestFilter] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
 
   // Create Transfer Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -133,36 +135,62 @@ export default function TransferList() {
     }
   };
 
-  const handleExportCSV = () => {
-    if (!transfers || transfers.length === 0) {
-      toast.warning('No transfer records to export.');
-      return;
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      let exportData = transfers;
+      try {
+        const res = await transferService.getTransfers({
+          per_page: 2000,
+          search: debouncedSearch || undefined,
+          status: statusFilter || undefined,
+          source_godown_id: sourceFilter || undefined,
+          destination_godown_id: destFilter || undefined,
+        });
+        if (res?.data?.items && res.data.items.length > 0) {
+          exportData = res.data.items;
+        }
+      } catch (e) {
+        console.warn('Fallback to loaded page transfers for CSV export:', e);
+      }
+
+      if (!exportData || exportData.length === 0) {
+        toast.warning('No transfer records found to export with currently applied filters.');
+        return;
+      }
+
+      const headers = [
+        { key: 'transfer_id', label: 'Transfer ID' },
+        { key: 'date', label: 'Date' },
+        { key: 'product', label: 'Product' },
+        { key: 'source', label: 'Source (Primary)' },
+        { key: 'destination', label: 'Destination (Retail)' },
+        { key: 'quantity', label: 'Quantity' },
+        { key: 'unit', label: 'Unit' },
+        { key: 'requester', label: 'Requester' },
+        { key: 'status', label: 'Status' },
+        { key: 'remarks', label: 'Remarks' },
+      ];
+      const data = exportData.map((t) => ({
+        transfer_id: String(t.transfer_number || t.id).replace(/^#+/, ''),
+        date: t.created_at ? new Date(t.created_at).toLocaleDateString() : '',
+        product: t.product?.name || '',
+        source: t.source_godown?.name || '',
+        destination: t.destination_godown?.name || '',
+        quantity: t.quantity || 0,
+        unit: t.product?.unit || '',
+        requester: t.requester?.name || '',
+        status: t.status || '',
+        remarks: t.remarks || '',
+      }));
+
+      exportToCSV('stock_transfers_export', headers, data);
+      toast.success(`Exported ${exportData.length} filtered transfer records.`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = [
-      { key: 'transfer_id', label: 'Transfer ID' },
-      { key: 'date', label: 'Date' },
-      { key: 'product', label: 'Product' },
-      { key: 'source', label: 'Source (Primary)' },
-      { key: 'destination', label: 'Destination (Retail)' },
-      { key: 'quantity', label: 'Quantity' },
-      { key: 'unit', label: 'Unit' },
-      { key: 'requester', label: 'Requester' },
-      { key: 'status', label: 'Status' },
-      { key: 'remarks', label: 'Remarks' },
-    ];
-    const data = transfers.map((t) => ({
-      transfer_id: String(t.transfer_number || t.id).replace(/^#+/, ''),
-      date: t.created_at ? new Date(t.created_at).toLocaleDateString() : '',
-      product: t.product?.name || '',
-      source: t.source_godown?.name || '',
-      destination: t.destination_godown?.name || '',
-      quantity: t.quantity || 0,
-      unit: t.product?.unit || '',
-      requester: t.requester?.name || '',
-      status: t.status || '',
-      remarks: t.remarks || '',
-    }));
-    exportToCSV('stock_transfers_export', headers, data);
   };
 
   return (
@@ -175,6 +203,7 @@ export default function TransferList() {
           <Button
             variant="secondary"
             onClick={handleExportCSV}
+            loading={isExporting}
             className="flex items-center gap-1.5 text-xs text-slate-700 hover:text-slate-900 border-slate-200"
           >
             <Download className="w-3.5 h-3.5" />
