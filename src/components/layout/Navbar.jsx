@@ -33,14 +33,14 @@ export default function Navbar({ onToggleSidebar }) {
 
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
-              C
+              I
             </div>
             <div>
               <span className="font-bold text-slate-900 tracking-tight text-base sm:text-lg block leading-none">
-                Contract IMS
+                Inchworm Creational LLP
               </span>
               <span className="text-[10px] text-slate-500 font-medium tracking-wide uppercase">
-                Godown Management
+                Inventory & Godown Operations
               </span>
             </div>
           </div>

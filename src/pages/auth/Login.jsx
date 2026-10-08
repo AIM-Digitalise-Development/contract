@@ -57,14 +57,14 @@ export default function Login() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-md">
-            C
+            I
           </div>
         </div>
         <h2 className="mt-4 text-center text-2xl font-bold tracking-tight text-slate-900">
-          Contract Inventory System
+          Inchworm Creational LLP
         </h2>
         <p className="mt-1 text-center text-xs text-slate-500">
-          Sign in to access your godown management portal
+          Sign in to access your inventory & operations portal
         </p>
       </div>
 

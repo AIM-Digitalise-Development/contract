@@ -247,7 +247,7 @@ export default function MaterialIssueSlipModal({ isOpen, onClose, request: initi
             <div className="border-b border-slate-300 pb-2 flex items-start justify-between">
               <div>
                 <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">
-                  Contract Inventory Management
+                  Inchworm Creational LLP
                 </span>
                 <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
                   MATERIAL ISSUE SLIP
