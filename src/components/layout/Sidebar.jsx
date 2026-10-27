@@ -182,9 +182,12 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* Footer info in sidebar */}
         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-          <div className="rounded-lg bg-blue-50/70 p-3 border border-blue-100 text-xs text-blue-900">
-            <span className="font-semibold block mb-0.5">Inchworm Creational LLP</span>
-            <span className="text-[11px] text-blue-700">Inventory Operations Portal</span>
+          <div className="rounded-lg bg-blue-50/70 p-3 border border-blue-100 text-xs text-blue-900 flex items-center gap-3">
+            <img src="/logo.png" alt="Inchworm Creational LLP" className="h-8 w-auto object-contain shrink-0" />
+            <div>
+              <span className="font-semibold block mb-0.5 leading-tight">Inchworm Creational LLP</span>
+              <span className="text-[11px] text-blue-700">Operations Portal</span>
+            </div>
           </div>
         </div>
       </aside>

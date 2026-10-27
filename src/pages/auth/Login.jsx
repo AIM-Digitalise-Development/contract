@@ -55,12 +55,14 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-md">
-            I
-          </div>
+        <div className="flex justify-center mb-2">
+          <img
+            src="/logo.png"
+            alt="Inchworm Creational LLP"
+            className="h-20 w-auto object-contain drop-shadow-sm transition-transform duration-200 hover:scale-105"
+          />
         </div>
-        <h2 className="mt-4 text-center text-2xl font-bold tracking-tight text-slate-900">
+        <h2 className="mt-2 text-center text-2xl font-bold tracking-tight text-slate-900">
           Inchworm Creational LLP
         </h2>
         <p className="mt-1 text-center text-xs text-slate-500">
@@ -70,6 +72,14 @@ export default function Login() {
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-white py-8 px-6 shadow-sm border border-slate-200 rounded-xl sm:px-10">
+          <div className="flex items-center gap-3 pb-4 mb-5 border-b border-slate-100">
+            <img src="/logo.png" alt="Inchworm Creational LLP" className="h-7 w-auto object-contain" />
+            <div>
+              <span className="text-xs font-bold text-slate-800 block">Sign In</span>
+              <span className="text-[11px] text-slate-500">Enter your credentials below</span>
+            </div>
+          </div>
+
           {error && (
             <div className="mb-5 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800 flex items-start gap-2">
               <svg className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

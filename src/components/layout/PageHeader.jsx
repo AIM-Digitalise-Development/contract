@@ -1,6 +1,8 @@
 import React from 'react';
 
-export default function PageHeader({ title, description, children, breadcrumbs = [] }) {
+export default function PageHeader({ title, description, subtitle, children, action, breadcrumbs = [] }) {
+  const desc = description || subtitle;
+  const actions = children || action;
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-200">
       <div>
@@ -17,9 +19,9 @@ export default function PageHeader({ title, description, children, breadcrumbs =
           </nav>
         )}
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-        {description && <p className="text-xs sm:text-sm text-slate-500 mt-1">{description}</p>}
+        {desc && <p className="text-xs sm:text-sm text-slate-500 mt-1">{desc}</p>}
       </div>
-      {children && <div className="flex flex-wrap items-center gap-2.5">{children}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
     </div>
   );
 }

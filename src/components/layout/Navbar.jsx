@@ -31,10 +31,12 @@ export default function Navbar({ onToggleSidebar }) {
             </svg>
           </button>
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
-              I
-            </div>
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="Inchworm Creational LLP"
+              className="h-9 sm:h-10 w-auto object-contain shrink-0"
+            />
             <div>
               <span className="font-bold text-slate-900 tracking-tight text-base sm:text-lg block leading-none">
                 Inchworm Creational LLP

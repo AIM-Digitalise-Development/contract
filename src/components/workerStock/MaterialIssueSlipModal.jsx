@@ -158,9 +158,9 @@ export default function MaterialIssueSlipModal({ isOpen, onClose, request: initi
       <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         
         {/* Sticky Header with Always-Visible Close Button */}
-        <div className="print:hidden flex items-center justify-between px-4 py-2.5 bg-slate-900 text-white shrink-0">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+        <div className="print:hidden flex items-center justify-between px-4 py-2 bg-slate-900 text-white shrink-0">
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="Inchworm" className="h-6 w-auto object-contain bg-white/10 rounded px-1 py-0.5" />
             <div>
               <h2 className="text-xs sm:text-sm font-bold tracking-tight">Material Issue Receipt Slip</h2>
               <div className="text-[10px] text-slate-300 font-mono">Voucher {cleanReqNum}</div>
@@ -244,19 +244,26 @@ export default function MaterialIssueSlipModal({ isOpen, onClose, request: initi
           <div id="printable-slip" className="border border-slate-300 rounded-lg p-3 sm:p-4 bg-white space-y-3 text-xs shadow-xs">
             
             {/* Header: Receipt Title & Status */}
-            <div className="border-b border-slate-300 pb-2 flex items-start justify-between">
-              <div>
-                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">
-                  Inchworm Creational LLP
-                </span>
-                <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
-                  MATERIAL ISSUE SLIP
-                </h1>
-                <div className="text-[10px] text-slate-500 font-mono">
-                  Ref: <span className="font-bold text-slate-800">{cleanReqNum}</span>
+            <div className="border-b border-slate-300 pb-2 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <img
+                  src="/logo.png"
+                  alt="Inchworm Creational LLP"
+                  className="h-10 w-auto object-contain"
+                />
+                <div>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">
+                    Inchworm Creational LLP
+                  </span>
+                  <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
+                    MATERIAL ISSUE SLIP
+                  </h1>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Ref: <span className="font-bold text-slate-800">{cleanReqNum}</span>
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
                   isCompleted ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-blue-100 text-blue-800 border border-blue-200'
                 }`}>
