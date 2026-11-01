@@ -22,6 +22,7 @@ import { Download } from 'lucide-react';
 
 export default function EmployeeList({ embedded = false }) {
   const { user, isAdmin, isSupervisor, isManager } = useAuth();
+  const canManagePersonnel = isAdmin || isManager || isSupervisor || embedded;
   const toast = useToast();
 
   const [employees, setEmployees] = useState([]);
@@ -115,12 +116,13 @@ export default function EmployeeList({ embedded = false }) {
   function handleOpenCreate() {
     setFormMode('create');
     setSelectedEmployee(null);
+    const workerRole = roles.find((r) => r.slug === 'worker');
     setFormData({
       name: '',
       email: '',
       phone: '',
       password: '',
-      role_id: roles.length > 0 ? roles[0].id : '',
+      role_id: workerRole ? workerRole.id : (roles.length > 0 ? roles[0].id : ''),
       status: 'active',
     });
     setIsFormOpen(true);
@@ -129,9 +131,10 @@ export default function EmployeeList({ embedded = false }) {
   function handleOpenEdit(emp) {
     setFormMode('edit');
     setSelectedEmployee(emp);
+    const isAutoEmail = emp.email && (emp.email.endsWith('.internal') || emp.email.startsWith('emp_'));
     setFormData({
       name: emp.name || '',
-      email: emp.email || '',
+      email: isAutoEmail ? '' : (emp.email || ''),
       phone: emp.phone || '',
       password: '', // Leave blank unless updating
       role_id: emp.role?.id || '',
@@ -144,16 +147,28 @@ export default function EmployeeList({ embedded = false }) {
     e.preventDefault();
     setFormLoading(true);
     try {
+      let finalEmail = formData.email ? formData.email.trim() : '';
+      if (!finalEmail) {
+        if (formMode === 'create' || !selectedEmployee?.email) {
+          const cleanName = (formData.name || 'emp').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanPhone = formData.phone ? formData.phone.replace(/\D/g, '').slice(-6) : '';
+          const suffix = cleanPhone || `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 900 + 100)}`;
+          finalEmail = `emp_${cleanName}_${suffix}@vrgroup.internal`;
+        } else {
+          finalEmail = selectedEmployee.email;
+        }
+      }
+
       const payload = {
         name: formData.name,
-        email: formData.email,
+        email: finalEmail,
         phone: formData.phone || undefined,
         role_id: Number(formData.role_id),
         status: formData.status.toLowerCase(),
       };
 
       if (formMode === 'create') {
-        payload.password = formData.password;
+        payload.password = formData.password || 'vrgroup@123';
         await employeeService.createEmployee(payload);
         toast.success('Employee created successfully.');
       } else {
@@ -254,9 +269,12 @@ export default function EmployeeList({ embedded = false }) {
         filename: `Personnel_List_${new Date().toISOString().slice(0, 10)}.csv`,
         columns: [
           { label: 'Employee ID', format: (e) => `EMP-${e.id}` },
-          { label: 'Date', format: (e) => (e.created_at ? new Date(e.created_at).toLocaleDateString() : '—') },
+          { label: 'Date', format: (e) => (e.created_at ? new Date(e.created_at).toLocaleDateString() : '-') },
           { label: 'Full Name', key: 'name' },
-          { label: 'Email / Login ID', key: 'email' },
+          { 
+            label: 'Email / Login ID', 
+            format: (e) => (e.email && !e.email.endsWith('.internal') && !e.email.startsWith('emp_') ? e.email : '') 
+          },
           { label: 'Phone', format: (e) => formatIndianPhone(e.phone) },
           { label: 'Role', format: (e) => e.role?.name || 'Worker' },
           { label: 'Portal Access', format: (e) => (e.role?.slug === 'worker' ? 'No' : 'Yes') },
@@ -292,7 +310,7 @@ export default function EmployeeList({ embedded = false }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
-            {(isAdmin || isManager) && (
+            {canManagePersonnel && (
               <Button variant="primary" onClick={handleOpenCreate}>
                 + Add New Personnel
               </Button>
@@ -316,7 +334,7 @@ export default function EmployeeList({ embedded = false }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
-            {(isAdmin || isManager) && (
+            {canManagePersonnel && (
               <Button variant="primary" onClick={handleOpenCreate} size="sm">
                 + Add New Personnel
               </Button>
@@ -368,8 +386,8 @@ export default function EmployeeList({ embedded = false }) {
             <EmptyState
               title="No Personnel Found"
               description="No employee or worker records match the active search and filter criteria."
-              actionLabel={isAdmin || isManager ? "+ Add Personnel" : undefined}
-              onAction={isAdmin || isManager ? handleOpenCreate : undefined}
+              actionLabel={canManagePersonnel ? "+ Add Personnel" : undefined}
+              onAction={canManagePersonnel ? handleOpenCreate : undefined}
             />
           </div>
         ) : (
@@ -397,13 +415,17 @@ export default function EmployeeList({ embedded = false }) {
                         EMP-{emp.id}
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap">
-                        {emp.created_at ? new Date(emp.created_at).toLocaleDateString() : '—'}
+                        {emp.created_at ? new Date(emp.created_at).toLocaleDateString() : '-'}
                       </td>
                       <td className="px-5 py-3.5 font-semibold text-slate-900">
                         {emp.name}
                       </td>
                       <td className="px-5 py-3.5 text-slate-600 text-xs font-mono">
-                        {emp.email}
+                        {emp.email && !emp.email.endsWith('.internal') && !emp.email.startsWith('emp_') ? (
+                          emp.email
+                        ) : (
+                          <span className="text-slate-400 font-sans italic">Not provided</span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-slate-600 text-xs font-mono whitespace-nowrap">
                         {formatIndianPhone(emp.phone)}
@@ -459,7 +481,7 @@ export default function EmployeeList({ embedded = false }) {
                             </Button>
                           )}
 
-                          {isAdmin ? (
+                          {(isAdmin || isManager || canManagePersonnel) ? (
                             <>
                               <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(emp)}>
                                 Edit
@@ -517,13 +539,17 @@ export default function EmployeeList({ embedded = false }) {
           />
 
           <Input
-            label="Email Address / System Login"
+            label={isWorkerRoleSelected ? "Email Address (Optional)" : "Email Address / System Login (Optional)"}
             name="email"
             type="email"
-            required
-            placeholder="e.g. rahul@company.com"
+            placeholder={isWorkerRoleSelected ? "Optional for workers (leave blank if none)" : "e.g. rahul@company.com (optional)"}
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            helperText={
+              isWorkerRoleSelected
+                ? "Workers do not require email or portal login credentials."
+                : "Required only if this user needs web portal access."
+            }
           />
 
           <Input

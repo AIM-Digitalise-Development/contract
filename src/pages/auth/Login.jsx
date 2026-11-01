@@ -142,7 +142,7 @@ export default function Login() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
-                onClick={() => setDemoCredentials('admin@contract.test')}
+                onClick={() => setDemoCredentials('accounts@vrgroup.net.in')}
                 className="py-1.5 px-2 rounded-md border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 text-center transition-colors cursor-pointer"
               >
                 Admin

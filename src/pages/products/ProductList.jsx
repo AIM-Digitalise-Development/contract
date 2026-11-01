@@ -33,7 +33,8 @@ const UNIT_OPTIONS = [
 ];
 
 export default function ProductList({ embedded = false }) {
-  const { isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager, isSupervisor } = useAuth();
+  const canManageProduct = isAdmin || isManager || isSupervisor || embedded;
   const toast = useToast();
 
   const [products, setProducts] = useState([]);
@@ -287,7 +288,7 @@ export default function ProductList({ embedded = false }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
-            {(isAdmin || isManager) && (
+            {canManageProduct && (
               <Button onClick={handleOpenCreate}>
                 + Add Product
               </Button>
@@ -311,7 +312,7 @@ export default function ProductList({ embedded = false }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
-            {(isAdmin || isManager) && (
+            {canManageProduct && (
               <Button onClick={handleOpenCreate} size="sm">
                 + Add Product
               </Button>
@@ -357,8 +358,8 @@ export default function ProductList({ embedded = false }) {
             <EmptyState
               title="No products found"
               description="Get started by adding items to the central product catalog."
-              actionLabel={isAdmin || isManager ? "+ Add Product" : undefined}
-              onAction={isAdmin || isManager ? handleOpenCreate : undefined}
+              actionLabel={canManageProduct ? "+ Add Product" : undefined}
+              onAction={canManageProduct ? handleOpenCreate : undefined}
             />
           </div>
         ) : (
@@ -424,7 +425,7 @@ export default function ProductList({ embedded = false }) {
                         </Badge>
                       </td>
                       <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                        {isAdmin ? (
+                        {canManageProduct ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(p)}>
                               Edit

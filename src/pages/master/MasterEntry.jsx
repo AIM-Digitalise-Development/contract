@@ -68,7 +68,7 @@ export default function MasterEntry() {
       key: 'client',
       name: 'Client Entry',
       shortName: 'Clients',
-      description: 'Manage clients, work sites, and project materials',
+      description: 'Manage clients, work sites & projects',
       icon: <Briefcase className="w-5 h-5 shrink-0" />,
       activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-600/25 border-blue-600',
       activeIconBg: 'bg-blue-700/90 text-white',
@@ -96,7 +96,7 @@ export default function MasterEntry() {
               key={tab.key}
               type="button"
               onClick={() => handleTabChange(tab.key)}
-              className={`flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 border cursor-pointer ${
+              className={`flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 border cursor-pointer min-h-[82px] ${
                 isActive
                   ? tab.activeClass
                   : `bg-white ${tab.borderColor} ${tab.hoverClass} shadow-2xs`
@@ -121,9 +121,10 @@ export default function MasterEntry() {
                   </span>
                 </div>
                 <div
-                  className={`text-xs mt-1 leading-snug line-clamp-1 ${
+                  className={`text-xs mt-1 leading-snug line-clamp-2 ${
                     isActive ? tab.activeSubtext : 'text-slate-500'
                   }`}
+                  title={tab.description}
                 >
                   {tab.description}
                 </div>

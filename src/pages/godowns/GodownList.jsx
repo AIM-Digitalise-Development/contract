@@ -20,7 +20,8 @@ import { exportToCSV } from '../../utils/csvExport';
 import { Download } from 'lucide-react';
 
 export default function GodownList({ embedded = false }) {
-  const { isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager, isSupervisor } = useAuth();
+  const canManageGodown = isAdmin || isManager || isSupervisor || embedded;
   const toast = useToast();
 
   const [godowns, setGodowns] = useState([]);
@@ -243,7 +244,7 @@ export default function GodownList({ embedded = false }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
-            {(isAdmin || isManager) && (
+            {canManageGodown && (
               <Button onClick={handleOpenCreate}>
                 + Add Godown
               </Button>
@@ -267,7 +268,7 @@ export default function GodownList({ embedded = false }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Download CSV
             </Button>
-            {(isAdmin || isManager) && (
+            {canManageGodown && (
               <Button onClick={handleOpenCreate} size="sm">
                 + Add Godown
               </Button>
@@ -324,8 +325,8 @@ export default function GodownList({ embedded = false }) {
             <EmptyState
               title="No godowns found"
               description="Get started by creating your primary warehouse or retail depots."
-              actionLabel={isAdmin || isManager ? "+ Add Godown" : undefined}
-              onAction={isAdmin || isManager ? handleOpenCreate : undefined}
+              actionLabel={canManageGodown ? "+ Add Godown" : undefined}
+              onAction={canManageGodown ? handleOpenCreate : undefined}
             />
           </div>
         ) : (
@@ -412,7 +413,7 @@ export default function GodownList({ embedded = false }) {
                       </td>
                       <td className="px-5 py-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          {isAdmin ? (
+                          {canManageGodown ? (
                             <>
                               <Button
                                 size="sm"

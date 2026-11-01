@@ -9,7 +9,7 @@ import godownService from '../../services/godownService';
 import productService from '../../services/productService';
 import stockService from '../../services/stockService';
 import clientService from '../../services/clientService';
-import { extractErrorMessage } from '../../services/api';
+import { extractErrorMessage, extractItems } from '../../services/api';
 import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
@@ -38,6 +38,10 @@ export default function WorkerList() {
   const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+
+  // Live stock holdings and active projects per worker
+  const [workerHoldingsMap, setWorkerHoldingsMap] = useState({});
+  const [workerProjectsMap, setWorkerProjectsMap] = useState({});
 
 
   // Assign Stock Modal State
@@ -72,7 +76,7 @@ export default function WorkerList() {
     items: [{ product_id: '', quantity: '' }],
   });
 
-  // Fetch Workers
+  // Fetch Workers and live stock holdings
   const fetchWorkers = useCallback(async (page = 1) => {
     setLoading(true);
     setError('');
@@ -83,21 +87,69 @@ export default function WorkerList() {
         role: 'worker',
       };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (statusFilter) params.status = statusFilter;
 
-      const res = await employeeService.getEmployees(params);
-      setWorkers(res.data?.items || []);
-      setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+      const [res, stocksRes, reqsRes] = await Promise.allSettled([
+        employeeService.getEmployees(params),
+        workerStockService.getWorkerStocks({ per_page: 1000 }),
+        workerStockService.getRequests({ type: 'ISSUE', per_page: 500 }),
+      ]);
+
+      if (res.status === 'fulfilled') {
+        setWorkers(res.value.data?.items || []);
+        setPagination(res.value.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+      } else {
+        throw res.reason;
+      }
+
+      // Map worker stock holdings
+      const hMap = {};
+      if (stocksRes.status === 'fulfilled') {
+        const stockItems = extractItems(stocksRes.value);
+        stockItems.forEach((st) => {
+          const wId = Number(st.worker_id || st.worker?.id);
+          const qty = parseFloat(st.quantity || st.current_balance || 0);
+          if (wId && qty > 0) {
+            hMap[wId] = (hMap[wId] || 0) + qty;
+          }
+        });
+      }
+      setWorkerHoldingsMap(hMap);
+
+      // Map worker latest active projects
+      const pMap = {};
+      if (reqsRes.status === 'fulfilled') {
+        const reqItems = extractItems(reqsRes.value);
+        reqItems.forEach((r) => {
+          const wId = Number(r.worker_id || r.worker?.id);
+          const s = (r.status || '').toUpperCase();
+          if (wId && s === 'APPROVED' && !pMap[wId]) {
+            const projectTitle = r.client?.name || r.work_title || r.task;
+            if (projectTitle) pMap[wId] = projectTitle;
+          }
+        });
+      }
+      setWorkerProjectsMap(pMap);
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load workers.'));
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, pagination.per_page]);
+  }, [debouncedSearch, pagination.per_page]);
 
   useEffect(() => {
     fetchWorkers(1);
   }, [fetchWorkers]);
+
+  const filteredWorkers = useMemo(() => {
+    if (!statusFilter) return workers;
+    if (statusFilter === 'on_project') {
+      return workers.filter((w) => (workerHoldingsMap[w.id] || 0) > 0);
+    }
+    if (statusFilter === 'not_on_project') {
+      return workers.filter((w) => (workerHoldingsMap[w.id] || 0) === 0);
+    }
+    return workers;
+  }, [workers, statusFilter, workerHoldingsMap]);
 
   // Load godowns, products & clients for assign modal
   useEffect(() => {
@@ -312,17 +364,22 @@ export default function WorkerList() {
         { key: 'phone', label: 'Contact Phone' },
         { key: 'email', label: 'Email Address' },
         { key: 'department', label: 'Department' },
-        { key: 'status', label: 'Status' },
+        { key: 'status', label: 'Project Status' },
+        { key: 'project', label: 'Active Project' },
       ];
-      const data = exportData.map((w) => ({
-        emp_id: `EMP-${w.id}`,
-        date_joined: w.created_at ? new Date(w.created_at).toLocaleDateString() : '',
-        name: w.name,
-        phone: formatIndianPhone(w.phone),
-        email: w.email || '',
-        department: w.department || 'Operations',
-        status: w.is_active ? 'Active' : 'Inactive',
-      }));
+      const data = exportData.map((w) => {
+        const isHolding = (workerHoldingsMap[w.id] || 0) > 0;
+        return {
+          emp_id: `EMP-${w.id}`,
+          date_joined: w.created_at ? new Date(w.created_at).toLocaleDateString() : '',
+          name: w.name,
+          phone: formatIndianPhone(w.phone),
+          email: (w.email && !w.email.endsWith('.internal') && !w.email.startsWith('emp_')) ? w.email : '',
+          department: w.department || 'Operations',
+          status: isHolding ? 'On Project' : 'Not in Any Project',
+          project: isHolding ? (workerProjectsMap[w.id] || 'Assigned Site Work') : 'None',
+        };
+      });
 
       exportToCSV('workers_export', headers, data);
       toast.success(`Exported ${exportData.length} filtered worker records.`);
@@ -381,9 +438,9 @@ export default function WorkerList() {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               options={[
-                { value: '', label: 'All Statuses' },
-                { value: 'active', label: 'Active Only' },
-                { value: 'inactive', label: 'Inactive Only' },
+                { value: '', label: 'All Workers (Project Status)' },
+                { value: 'on_project', label: 'On Project (Holding Stock)' },
+                { value: 'not_on_project', label: 'Not in Any Project' },
               ]}
             />
           </div>
@@ -398,10 +455,10 @@ export default function WorkerList() {
           </div>
         ) : error ? (
           <ErrorState message={error} onRetry={() => fetchWorkers(pagination.current_page)} />
-        ) : workers.length === 0 ? (
+        ) : filteredWorkers.length === 0 ? (
           <EmptyState
             title="No workers found"
-            description={debouncedSearch ? 'Try clearing or modifying your search filters.' : 'No field workers are currently registered.'}
+            description={debouncedSearch || statusFilter ? 'Try clearing or modifying your search or status filters.' : 'No field workers are currently registered.'}
           />
         ) : (
           <>
@@ -414,63 +471,88 @@ export default function WorkerList() {
                     <th className="px-5 py-3 text-left">Worker Name</th>
                     <th className="px-5 py-3 text-left">Contact Info</th>
                     <th className="px-5 py-3 text-left">Department</th>
-                    <th className="px-5 py-3 text-left">Status</th>
+                    <th className="px-5 py-3 text-left">Project Status</th>
                     <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {workers.map((w) => (
-                    <tr key={w.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-5 py-3 font-mono font-semibold text-slate-800">
-                        EMP-{w.id}
-                      </td>
-                      <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
-                        {w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="px-5 py-3">
-                        <Link
-                          to={`/workers/${w.id}`}
-                          className="font-bold text-slate-900 hover:text-blue-600 transition"
-                        >
-                          {w.name}
-                        </Link>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="text-slate-800 font-medium">{formatIndianPhone(w.phone)}</div>
-                        {w.email && <div className="text-slate-400 text-[11px]">{w.email}</div>}
-                      </td>
-                      <td className="px-5 py-3 font-medium text-slate-600">
-                        {w.department || 'Operations'}
-                      </td>
-                      <td className="px-5 py-3">
-                        <Badge variant={w.is_active ? 'success' : 'danger'}>
-                          {w.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {(isAdmin || isSupervisor) && !isManager && (
+                  {filteredWorkers.map((w) => {
+                    const isHolding = (workerHoldingsMap[w.id] || 0) > 0;
+                    const projectName = workerProjectsMap[w.id];
+
+                    return (
+                      <tr key={w.id} className="hover:bg-slate-50/80 transition">
+                        <td className="px-5 py-3 font-mono font-semibold text-slate-800">
+                          EMP-{w.id}
+                        </td>
+                        <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
+                          {w.created_at ? new Date(w.created_at).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-5 py-3">
+                          <Link
+                            to={`/workers/${w.id}`}
+                            className="font-bold text-slate-900 hover:text-blue-600 transition"
+                          >
+                            {w.name}
+                          </Link>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="text-slate-800 font-medium">{formatIndianPhone(w.phone)}</div>
+                          {w.email && !w.email.endsWith('.internal') && !w.email.startsWith('emp_') && (
+                            <div className="text-slate-400 text-[11px]">{w.email}</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 font-medium text-slate-600">
+                          {w.department || 'Operations'}
+                        </td>
+                        <td className="px-5 py-3">
+                          {isHolding ? (
+                            <div className="flex flex-col items-start gap-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                On Project
+                              </span>
+                              {projectName && (
+                                <span
+                                  className="text-[11px] text-slate-600 font-medium truncate max-w-[160px]"
+                                  title={projectName}
+                                >
+                                  {projectName}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                              Not in Any Project
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {(isAdmin || isSupervisor) && !isManager && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleOpenAssign(w)}
+                                className="text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200 text-xs cursor-pointer"
+                              >
+                                Assign Stock
+                              </Button>
+                            )}
                             <Button
                               variant="secondary"
                               size="sm"
-                              onClick={() => handleOpenAssign(w)}
-                              className="text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200 text-xs cursor-pointer"
+                              onClick={() => navigate(`/workers/${w.id}`)}
+                              className="text-xs cursor-pointer"
                             >
-                              Assign Stock
+                              Stock History
                             </Button>
-                          )}
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => navigate(`/workers/${w.id}`)}
-                            className="text-xs cursor-pointer"
-                          >
-                            Stock History
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -509,7 +591,11 @@ export default function WorkerList() {
               {selectedWorker ? (
                 <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 flex items-center justify-between">
                   <span>{selectedWorker.name} (EMP-{selectedWorker.id})</span>
-                  <span className="text-[11px] text-slate-500 font-normal">{selectedWorker.email}</span>
+                  <span className="text-[11px] text-slate-500 font-normal">
+                    {selectedWorker.email && !selectedWorker.email.endsWith('.internal') && !selectedWorker.email.startsWith('emp_')
+                      ? selectedWorker.email
+                      : (selectedWorker.phone ? formatIndianPhone(selectedWorker.phone) : '')}
+                  </span>
                 </div>
               ) : (
                 <Select
@@ -529,7 +615,7 @@ export default function WorkerList() {
               <label className="text-xs font-semibold text-indigo-950 block mb-1 flex items-center justify-between">
                 <span className="flex items-center gap-1 font-bold">
                   <Building className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Select Client First</span> <span className="text-rose-500">*</span>
+                  <span>Select Client</span> <span className="text-rose-500">*</span>
                 </span>
                 <span className="text-[10px] text-indigo-700">Required</span>
               </label>

@@ -779,7 +779,7 @@ export default function WorkerStockRequests() {
                 <label className="block text-xs font-semibold text-indigo-950 mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1 font-bold">
                     <Building className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Select Client First</span> <span className="text-red-500">*</span>
+                    <span>Select Client</span> <span className="text-red-500">*</span>
                   </span>
                   <span className="text-[10px] text-indigo-700">Required</span>
                 </label>
