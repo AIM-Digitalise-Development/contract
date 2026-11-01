@@ -258,12 +258,8 @@ export default function WorkerList() {
       toast.warning('Please select a Client first before assigning materials.');
       return;
     }
-    if (!assignForm.start_date || !assignForm.end_date) {
-      toast.warning('Please select Start Date and End Date.');
-      return;
-    }
-    if (new Date(assignForm.end_date) < new Date(assignForm.start_date)) {
-      toast.warning('End Date cannot be earlier than Start Date.');
+    if (!assignForm.start_date) {
+      toast.warning('Please select a Start Date.');
       return;
     }
     if (!assignForm.source_godown_id) {
@@ -272,10 +268,6 @@ export default function WorkerList() {
     }
     if (!assignForm.work_title?.trim()) {
       toast.warning('Please enter the task / work title.');
-      return;
-    }
-    if (!assignForm.remarks?.trim()) {
-      toast.warning('Please enter the work description.');
       return;
     }
 
@@ -310,12 +302,12 @@ export default function WorkerList() {
         worker_id: Number(assignForm.worker_id),
         client_id: Number(assignForm.client_id),
         start_date: assignForm.start_date,
-        end_date: assignForm.end_date,
+        end_date: null,
         work_title: assignForm.work_title.trim(),
-        work_location: assignForm.work_location.trim(),
+        work_location: (assignForm.work_location || '').trim(),
         source_godown_id: Number(assignForm.source_godown_id),
-        remarks: assignForm.remarks.trim(),
-        description: assignForm.remarks.trim(),
+        remarks: (assignForm.remarks || '').trim(),
+        description: (assignForm.remarks || '').trim(),
         supervisor_signature: assignForm.supervisor_signature || (user?.name ? `${user.name} (Supervisor)` : null),
         items: assignForm.items.map(it => ({
           product_id: Number(it.product_id),
@@ -582,97 +574,45 @@ export default function WorkerList() {
       >
         <form onSubmit={handleSubmitAssign} className="space-y-4">
           
-          {/* STEP 1: Select Worker & Client */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Designated Worker <span className="text-rose-500">*</span>
-              </label>
-              {selectedWorker ? (
-                <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 flex items-center justify-between">
-                  <span>{selectedWorker.name} (EMP-{selectedWorker.id})</span>
-                  <span className="text-[11px] text-slate-500 font-normal">
-                    {selectedWorker.email && !selectedWorker.email.endsWith('.internal') && !selectedWorker.email.startsWith('emp_')
-                      ? selectedWorker.email
-                      : (selectedWorker.phone ? formatIndianPhone(selectedWorker.phone) : '')}
-                  </span>
-                </div>
-              ) : (
-                <Select
-                  value={assignForm.worker_id}
-                  onChange={(e) => setAssignForm({ ...assignForm, worker_id: e.target.value })}
-                  options={[
-                    { value: '', label: 'Select Worker...' },
-                    ...workers.map((w) => ({ value: w.id, label: `${w.name} (EMP-${w.id})` })),
-                  ]}
-                  required
-                />
-              )}
-            </div>
-
-            {/* Select Client First */}
-            <div>
-              <label className="text-xs font-semibold text-indigo-950 block mb-1 flex items-center justify-between">
-                <span className="flex items-center gap-1 font-bold">
-                  <Building className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Select Client</span> <span className="text-rose-500">*</span>
+          {/* STEP 1: Designated Worker */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Designated Worker <span className="text-rose-500">*</span>
+            </label>
+            {selectedWorker ? (
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 flex items-center justify-between">
+                <span>{selectedWorker.name} (EMP-{selectedWorker.id})</span>
+                <span className="text-[11px] text-slate-500 font-normal">
+                  {selectedWorker.email && !selectedWorker.email.endsWith('.internal') && !selectedWorker.email.startsWith('emp_')
+                    ? selectedWorker.email
+                    : (selectedWorker.phone ? formatIndianPhone(selectedWorker.phone) : '')}
                 </span>
-                <span className="text-[10px] text-indigo-700">Required</span>
-              </label>
+              </div>
+            ) : (
               <Select
-                value={assignForm.client_id}
-                onChange={(e) => handleClientChange(e.target.value)}
+                value={assignForm.worker_id}
+                onChange={(e) => setAssignForm({ ...assignForm, worker_id: e.target.value })}
                 options={[
-                  { value: '', label: 'Select Client Project...' },
-                  ...clients.map((c) => ({
-                    value: c.id,
-                    label: `${c.name} — ${c.location || 'Site'} (${formatIndianPhone(c.contact_number) || 'No contact'})`,
-                  })),
+                  { value: '', label: 'Select Worker...' },
+                  ...workers.map((w) => ({ value: w.id, label: `${w.name} (EMP-${w.id})` })),
                 ]}
                 required
               />
-            </div>
+            )}
           </div>
 
-          {selectedClientObj && (
-            <div className="bg-indigo-50/70 rounded-lg p-2.5 border border-indigo-200 text-xs flex items-center justify-between">
-              <div>
-                <span className="font-bold text-indigo-950">{selectedClientObj.name}</span>
-                <span className="text-slate-600 ml-2">Phone: {formatIndianPhone(selectedClientObj.contact_number) || '—'}</span>
-              </div>
-              <div className="text-indigo-800 font-medium">
-                Location: {selectedClientObj.location || '—'}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: Start Date & End Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                <span>Start Date</span> <span className="text-rose-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={assignForm.start_date}
-                onChange={(e) => setAssignForm({ ...assignForm, start_date: e.target.value })}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                <span>End Date</span> <span className="text-rose-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={assignForm.end_date}
-                onChange={(e) => setAssignForm({ ...assignForm, end_date: e.target.value })}
-                required
-              />
-            </div>
+          {/* STEP 2: Start Date (End Date removed as requested) */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+              <span>Start Date</span> <span className="text-rose-500">*</span>
+            </label>
+            <Input
+              type="date"
+              value={assignForm.start_date}
+              onChange={(e) => setAssignForm({ ...assignForm, start_date: e.target.value })}
+              required
+            />
           </div>
 
           {/* STEP 3: Source Retail Godown */}
@@ -808,7 +748,44 @@ export default function WorkerList() {
             </div>
           </div>
 
-          {/* STEP 5: Task / Work Title & Work Location */}
+          {/* STEP 5: Select Client Project (Placed on top of Task / Title) */}
+          <div className="space-y-2 pt-1 border-t border-slate-200">
+            <div>
+              <label className="text-xs font-semibold text-indigo-950 block mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1 font-bold">
+                  <Building className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Select Client</span> <span className="text-rose-500">*</span>
+                </span>
+                <span className="text-[10px] text-indigo-700">Required</span>
+              </label>
+              <Select
+                value={assignForm.client_id}
+                onChange={(e) => handleClientChange(e.target.value)}
+                options={[
+                  { value: '', label: 'Select Client Project...' },
+                  ...clients.map((c) => ({
+                    value: c.id,
+                    label: `${c.name} - ${c.location || 'Site'} (${formatIndianPhone(c.contact_number) || 'No contact'})`,
+                  })),
+                ]}
+                required
+              />
+            </div>
+
+            {selectedClientObj && (
+              <div className="bg-indigo-50/70 rounded-lg p-2.5 border border-indigo-200 text-xs flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-indigo-950">{selectedClientObj.name}</span>
+                  <span className="text-slate-600 ml-2">Phone: {formatIndianPhone(selectedClientObj.contact_number) || '-'}</span>
+                </div>
+                <div className="text-indigo-800 font-medium">
+                  Location: {selectedClientObj.location || '-'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* STEP 6: Task / Work Title & Work Location */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
@@ -835,18 +812,17 @@ export default function WorkerList() {
             </div>
           </div>
 
-          {/* STEP 6: Assigned Task Work Description */}
+          {/* STEP 7: Assigned Task Work Description (Optional) */}
           <div>
             <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Assigned Task / Work Description <span className="text-rose-500">*</span>
+              Assigned Task / Work Description
             </label>
             <textarea
               rows="3"
               className="w-full rounded-lg border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
-              placeholder="Describe clearly what task or work the assigned materials are being issued for (e.g. Pipeline maintenance at site B)..."
+              placeholder="Describe clearly what task or work the assigned materials are being issued for (optional)..."
               value={assignForm.remarks}
               onChange={(e) => setAssignForm({ ...assignForm, remarks: e.target.value })}
-              required
             />
           </div>
 

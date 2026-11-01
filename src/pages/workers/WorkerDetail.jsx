@@ -311,24 +311,12 @@ export default function WorkerDetail() {
       toast.warning('Please select the Start Date.');
       return;
     }
-    if (!assignForm.end_date) {
-      toast.warning('Please select the End Date.');
-      return;
-    }
-    if (new Date(assignForm.end_date) < new Date(assignForm.start_date)) {
-      toast.warning('End Date cannot be earlier than Start Date.');
-      return;
-    }
     if (!assignForm.source_godown_id) {
       toast.warning('Please select a source Retail godown.');
       return;
     }
     if (!assignForm.work_title.trim()) {
       toast.warning('Please assign the task/work title to the worker.');
-      return;
-    }
-    if (!assignForm.remarks.trim()) {
-      toast.warning('Please add the required work description.');
       return;
     }
 
@@ -359,12 +347,12 @@ export default function WorkerDetail() {
         worker_id: Number(id),
         client_id: Number(assignForm.client_id),
         start_date: assignForm.start_date,
-        end_date: assignForm.end_date,
+        end_date: null,
         work_title: assignForm.work_title.trim(),
         work_location: assignForm.work_location.trim(),
         source_godown_id: Number(assignForm.source_godown_id),
-        remarks: assignForm.remarks.trim(),
-        description: assignForm.remarks.trim(),
+        remarks: assignForm.remarks?.trim() || null,
+        description: assignForm.remarks?.trim() || null,
         supervisor_signature: assignForm.supervisor_signature || (user?.name ? `${user.name} (Supervisor)` : 'Supervisor'),
         items: assignForm.items.map((it) => ({
           product_id: Number(it.product_id),
@@ -1702,83 +1690,18 @@ export default function WorkerDetail() {
       >
         <form onSubmit={handleAssignSubmit} className="space-y-4">
           
-          {/* STEP 1: Select the Client First */}
-          <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-black flex items-center justify-center">
-                  1
-                </span>
-                <span>Select Client (Required First)</span>
-                <span className="text-rose-500">*</span>
-              </label>
-              <span className="text-[11px] text-indigo-700 font-medium">Step 1 of 6</span>
-            </div>
-
-            <Select
-              value={assignForm.client_id}
-              onChange={(e) => handleAssignClientChange(e.target.value)}
-              options={[
-                { value: '', label: 'Select Client / Work Project...' },
-                ...clients.map((c) => ({
-                  value: c.id,
-                  label: `${c.name} — ${c.location || 'Location N/A'} (${c.contact_number || 'No contact'})`,
-                })),
-              ]}
+          {/* STEP 1: Select Start Date */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <span>Start Date</span> <span className="text-rose-500">*</span>
+            </label>
+            <Input
+              type="date"
+              value={assignForm.start_date}
+              onChange={(e) => setAssignForm({ ...assignForm, start_date: e.target.value })}
               required
             />
-
-            {selectedAssignClient && (
-              <div className="bg-white rounded-lg p-2.5 border border-indigo-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Client Name</span>
-                  <span className="font-bold text-slate-800">{selectedAssignClient.name}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Contact Number</span>
-                  <span className="font-medium text-slate-700">{selectedAssignClient.contact_number || '—'}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Location</span>
-                  <span className="font-medium text-slate-700">{selectedAssignClient.location || '—'}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* STEP 2 & 3: Select Start Date & End Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Step 2: Start Date */}
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1.5">
-                <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
-                  2
-                </span>
-                <span>Start Date</span> <span className="text-rose-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={assignForm.start_date}
-                onChange={(e) => setAssignForm({ ...assignForm, start_date: e.target.value })}
-                required
-              />
-            </div>
-
-            {/* Step 3: End Date */}
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1.5">
-                <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
-                  3
-                </span>
-                <span>End Date</span> <span className="text-rose-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={assignForm.end_date}
-                onChange={(e) => setAssignForm({ ...assignForm, end_date: e.target.value })}
-                required
-              />
-            </div>
           </div>
 
           {/* STEP 4: Select Source Retail Godown & Materials / Products */}
@@ -1934,13 +1857,52 @@ export default function WorkerDetail() {
             </div>
           </div>
 
+          {/* STEP: Select Client Project (Placed on top of Task / Title) */}
+          <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                <Building className="w-4 h-4 text-indigo-600" />
+                <span>Select Client</span>
+                <span className="text-rose-500">*</span>
+              </label>
+              <span className="text-[11px] text-indigo-700 font-medium">Required</span>
+            </div>
+
+            <Select
+              value={assignForm.client_id}
+              onChange={(e) => handleAssignClientChange(e.target.value)}
+              options={[
+                { value: '', label: 'Select Client / Work Project...' },
+                ...clients.map((c) => ({
+                  value: c.id,
+                  label: `${c.name} — ${c.location || 'Location N/A'} (${c.contact_number || 'No contact'})`,
+                })),
+              ]}
+              required
+            />
+
+            {selectedAssignClient && (
+              <div className="bg-white rounded-lg p-2.5 border border-indigo-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Client Name</span>
+                  <span className="font-bold text-slate-800">{selectedAssignClient.name}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Contact Number</span>
+                  <span className="font-medium text-slate-700">{selectedAssignClient.contact_number || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Location</span>
+                  <span className="font-medium text-slate-700">{selectedAssignClient.location || '—'}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* STEP 5: Assign the Task / Work to the Worker */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1.5">
-                <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
-                  5
-                </span>
                 <span>Task / Work Title</span> <span className="text-rose-500">*</span>
               </label>
               <Input
@@ -1965,21 +1927,17 @@ export default function WorkerDetail() {
             </div>
           </div>
 
-          {/* STEP 6: Add the Required Work Description */}
+          {/* STEP 6: Work Description (Optional) */}
           <div>
             <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
-                6
-              </span>
-              <span>Work Description & Details</span> <span className="text-rose-500">*</span>
+              <span>Work Description & Details</span> <span className="text-slate-400 font-normal">(Optional)</span>
             </label>
             <textarea
               rows="3"
               className="w-full rounded-lg border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
-              placeholder="Provide full description of the work and why these materials are issued (e.g. Assigned to carry out the initial wiring and cable trunking for client office)..."
+              placeholder="Provide description of the work and why these materials are issued (optional)..."
               value={assignForm.remarks}
               onChange={(e) => setAssignForm({ ...assignForm, remarks: e.target.value })}
-              required
             />
           </div>
 

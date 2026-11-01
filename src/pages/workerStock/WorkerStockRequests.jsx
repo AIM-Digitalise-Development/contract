@@ -272,12 +272,8 @@ export default function WorkerStockRequests() {
       toast.error('Please select a Client first before assigning materials.');
       return;
     }
-    if (!issueForm.start_date || !issueForm.end_date) {
-      toast.error('Please select Start Date and End Date.');
-      return;
-    }
-    if (new Date(issueForm.end_date) < new Date(issueForm.start_date)) {
-      toast.error('End Date cannot be earlier than Start Date.');
+    if (!issueForm.start_date) {
+      toast.error('Please select Start Date.');
       return;
     }
     if (!issueForm.godown_id) {
@@ -286,10 +282,6 @@ export default function WorkerStockRequests() {
     }
     if (!issueForm.work_title?.trim()) {
       toast.error('Please enter the task / work title.');
-      return;
-    }
-    if (!issueForm.remarks.trim()) {
-      toast.error('Assigned task / work description is required.');
       return;
     }
 
@@ -324,13 +316,13 @@ export default function WorkerStockRequests() {
         worker_id: parseInt(issueForm.worker_id, 10),
         client_id: parseInt(issueForm.client_id, 10),
         start_date: issueForm.start_date,
-        end_date: issueForm.end_date,
+        end_date: null,
         work_title: issueForm.work_title.trim(),
         work_location: issueForm.work_location.trim(),
         source_godown_id: parseInt(issueForm.godown_id, 10),
         godown_id: parseInt(issueForm.godown_id, 10),
-        remarks: issueForm.remarks.trim(),
-        description: issueForm.remarks.trim(),
+        remarks: issueForm.remarks?.trim() || null,
+        description: issueForm.remarks?.trim() || null,
         supervisor_signature: issueForm.supervisor_signature || (user?.name ? `${user.name} (Supervisor)` : null),
         items: issueForm.items.map(it => ({
           product_id: parseInt(it.product_id, 10),
@@ -754,92 +746,39 @@ export default function WorkerStockRequests() {
           maxWidth="max-w-2xl"
         >
           <form onSubmit={handleIssueSubmit} className="space-y-4">
-            {/* STEP 1: Select Worker & Client */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Designated Worker <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={issueForm.worker_id}
-                  onChange={(e) => setIssueForm(prev => ({ ...prev, worker_id: e.target.value }))}
-                  required
-                  className="w-full border border-gray-300 rounded-md p-2 text-xs focus:ring-corporate-blue focus:border-corporate-blue"
-                >
-                  <option value="">-- Choose Worker --</option>
-                  {safeWorkers.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} {w.department ? `(${w.department})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-indigo-950 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1 font-bold">
-                    <Building className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Select Client</span> <span className="text-red-500">*</span>
-                  </span>
-                  <span className="text-[10px] text-indigo-700">Required</span>
-                </label>
-                <select
-                  value={issueForm.client_id}
-                  onChange={(e) => handleIssueClientChange(e.target.value)}
-                  required
-                  className="w-full border border-indigo-300 rounded-md p-2 text-xs focus:ring-corporate-blue focus:border-corporate-blue bg-indigo-50/30"
-                >
-                  <option value="">-- Choose Client Project --</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} — {c.location || 'Site'} ({c.contact_number || 'No phone'})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* STEP 1: Select Worker */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Designated Worker <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={issueForm.worker_id}
+                onChange={(e) => setIssueForm(prev => ({ ...prev, worker_id: e.target.value }))}
+                required
+                className="w-full border border-gray-300 rounded-md p-2 text-xs focus:ring-corporate-blue focus:border-corporate-blue"
+              >
+                <option value="">-- Choose Worker --</option>
+                {safeWorkers.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} {w.department ? `(${w.department})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {selectedClientObj && (
-              <div className="bg-indigo-50/70 rounded-lg p-2.5 border border-indigo-200 text-xs flex items-center justify-between">
-                <div>
-                  <span className="font-bold text-indigo-950">{selectedClientObj.name}</span>
-                  <span className="text-slate-600 ml-2">Phone: {selectedClientObj.contact_number || '—'}</span>
-                </div>
-                <div className="text-indigo-800 font-medium">
-                  Location: {selectedClientObj.location || '—'}
-                </div>
-              </div>
-            )}
-
-            {/* STEP 2: Start Date & End Date */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Start Date</span> <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={issueForm.start_date}
-                  onChange={(e) => setIssueForm(prev => ({ ...prev, start_date: e.target.value }))}
-                  required
-                  className="w-full border border-gray-300 rounded-md p-1.5 text-xs focus:ring-corporate-blue"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                  <span>End Date</span> <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={issueForm.end_date}
-                  onChange={(e) => setIssueForm(prev => ({ ...prev, end_date: e.target.value }))}
-                  required
-                  className="w-full border border-gray-300 rounded-md p-1.5 text-xs focus:ring-corporate-blue"
-                />
-              </div>
+            {/* STEP 2: Start Date */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                <span>Start Date</span> <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={issueForm.start_date}
+                onChange={(e) => setIssueForm(prev => ({ ...prev, start_date: e.target.value }))}
+                required
+                className="w-full border border-gray-300 rounded-md p-1.5 text-xs focus:ring-corporate-blue"
+              />
             </div>
 
             {/* STEP 3: Source Retail Godown */}
@@ -956,6 +895,44 @@ export default function WorkerStockRequests() {
               </div>
             </div>
 
+            {/* Select Client Project (Placed on top of Task / Title) */}
+            <div className="space-y-2 pt-1 border-t border-slate-200">
+              <div>
+                <label className="block text-xs font-semibold text-indigo-950 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-bold">
+                    <Building className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Select Client</span> <span className="text-red-500">*</span>
+                  </span>
+                  <span className="text-[10px] text-indigo-700">Required</span>
+                </label>
+                <select
+                  value={issueForm.client_id}
+                  onChange={(e) => handleIssueClientChange(e.target.value)}
+                  required
+                  className="w-full border border-indigo-300 rounded-md p-2 text-xs focus:ring-corporate-blue focus:border-corporate-blue bg-indigo-50/30"
+                >
+                  <option value="">-- Choose Client Project --</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.location || 'Site'} ({c.contact_number || 'No phone'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedClientObj && (
+                <div className="bg-indigo-50/70 rounded-lg p-2.5 border border-indigo-200 text-xs flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-indigo-950">{selectedClientObj.name}</span>
+                    <span className="text-slate-600 ml-2">Phone: {selectedClientObj.contact_number || '—'}</span>
+                  </div>
+                  <div className="text-indigo-800 font-medium">
+                    Location: {selectedClientObj.location || '—'}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* STEP 4: Task / Work Title & Work Location */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -988,15 +965,14 @@ export default function WorkerStockRequests() {
             {/* STEP 5: Assigned Task / Work Description */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Assigned Task / Work Description <span className="text-red-500">*</span>
+                Assigned Task / Work Description <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <textarea
                 value={issueForm.remarks}
                 onChange={(e) => setIssueForm(prev => ({ ...prev, remarks: e.target.value }))}
-                placeholder="Describe the task or work assigned (e.g. Tools and fasteners for site assembly / pipeline repair at sector 4)..."
+                placeholder="Describe the task or work assigned (optional)..."
                 className="w-full border border-gray-300 rounded-md p-2 text-xs focus:ring-corporate-blue focus:border-corporate-blue"
                 rows="2"
-                required
               />
             </div>
 
