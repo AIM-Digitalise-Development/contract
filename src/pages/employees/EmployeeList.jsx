@@ -135,12 +135,33 @@ export default function EmployeeList({ embedded = false }) {
     setFormData({
       name: emp.name || '',
       email: isAutoEmail ? '' : (emp.email || ''),
-      phone: emp.phone || '',
+      phone: emp.phone ? String(emp.phone).replace(/\D/g, '').slice(-10) : '',
       password: '', // Leave blank unless updating
       role_id: emp.role?.id || '',
       status: (emp.status || 'active').toLowerCase(),
     });
     setIsFormOpen(true);
+  }
+
+  function handlePhoneChange(e) {
+    // Only numbers allowed - strip all letters and non-digit characters
+    const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
+    setFormData((prev) => ({ ...prev, phone: numericOnly }));
+  }
+
+  function handlePhoneKeyDown(e) {
+    // Allow navigation and editing control keys
+    if (
+      ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    // Block any non-digit character (letters, punctuation, etc.)
+    if (!/^\d$/.test(e.key)) {
+      e.preventDefault();
+    }
   }
 
   async function handleFormSubmit(e) {
@@ -555,9 +576,18 @@ export default function EmployeeList({ embedded = false }) {
           <Input
             label="Phone Number (Indian format +91)"
             name="phone"
-            placeholder="e.g. 9876543210"
+            type="tel"
+            inputMode="numeric"
+            maxLength={10}
+            placeholder="e.g. 9876543210 (Numbers only)"
             value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            onChange={handlePhoneChange}
+            onKeyDown={handlePhoneKeyDown}
+            helperText={
+              formData.phone
+                ? `Formatted: ${formatIndianPhone(formData.phone)} (${formData.phone.length}/10 digits)`
+                : 'Numbers only (no letters allowed). Enter 10-digit Indian mobile number.'
+            }
           />
 
           <Select

@@ -134,6 +134,25 @@ export default function ClientList({ embedded = false }) {
     setIsFormOpen(true);
   };
 
+  const handleClientPhoneChange = (e) => {
+    // Only numbers allowed - strip all letters and non-digit characters
+    const cleaned = e.target.value.replace(/\D/g, '').slice(0, 10);
+    setFormData((prev) => ({ ...prev, contact_number: cleaned }));
+  };
+
+  const handleClientPhoneKeyDown = (e) => {
+    if (
+      ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (!/^\d$/.test(e.key)) {
+      e.preventDefault();
+    }
+  };
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     setFormLoading(true);
@@ -509,11 +528,19 @@ export default function ClientList({ embedded = false }) {
                 Client Contact Number <span className="text-rose-500">*</span>
               </label>
               <Input
-                type="text"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
                 required
-                placeholder="e.g. +91 98765 43210"
+                placeholder="e.g. 9876543210 (Numbers only)"
                 value={formData.contact_number}
-                onChange={(e) => setFormData({ ...formData, contact_number: e.target.value })}
+                onChange={handleClientPhoneChange}
+                onKeyDown={handleClientPhoneKeyDown}
+                helperText={
+                  formData.contact_number
+                    ? `Formatted: ${formatIndianPhone(formData.contact_number)} (${formData.contact_number.length}/10 digits)`
+                    : 'Numbers only (no letters allowed). Enter 10-digit Indian phone number.'
+                }
               />
             </div>
           </div>
