@@ -28,6 +28,10 @@ const clientService = {
   getAuditSummary() {
     return api.get('/audit-entry/summary').then((res) => res.data);
   },
+
+  deleteAuditEntry(id) {
+    return api.delete(`/audit-entry/ledger/${id}`).then((res) => res.data);
+  },
 };
 
 export default clientService;

@@ -19,6 +19,12 @@ export const workerStockService = {
     return response.data;
   },
 
+  // Delete worker stock request (Admin only)
+  async deleteRequest(id) {
+    const response = await api.delete(`/worker-stock/requests/${id}`);
+    return response.data;
+  },
+
   // Create issue request (Godown -> Worker)
   async createIssueRequest(data) {
     const response = await api.post('/worker-stock/requests/issue', data);

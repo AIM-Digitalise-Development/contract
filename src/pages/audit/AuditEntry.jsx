@@ -37,6 +37,7 @@ import {
   Layers,
   Download,
   Hammer,
+  Trash2,
 } from 'lucide-react';
 
 export default function AuditEntry() {
@@ -79,6 +80,31 @@ export default function AuditEntry() {
   // Receipt Slip Modal
   const [slipModalOpen, setSlipModalOpen] = useState(false);
   const [selectedSlipRequest, setSelectedSlipRequest] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleDeleteAuditEntry = async (record) => {
+    const cleanId = String(record.request_number || record.id).replace(/^#+/, '');
+    if (!window.confirm(`Are you sure you want to delete Audit Entry ${cleanId}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeletingId(record.id);
+      await clientService.deleteAuditEntry(record.id);
+      toast.success(`Audit Entry ${cleanId} deleted successfully.`);
+      fetchAuditRecords(pagination.current_page || 1);
+      try {
+        const sRes = await clientService.getAuditSummary();
+        setSummary(sRes.data || {});
+      } catch (err) {
+        // silent
+      }
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to delete audit entry.'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Load dropdown lists once
   useEffect(() => {
@@ -725,18 +751,31 @@ export default function AuditEntry() {
                       </td>
 
                       {/* 9. Status */}
-                      <td className="px-5 py-3.5 align-top text-center">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            r.status === 'APPROVED'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : r.status === 'PENDING'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          {r.status}
-                        </span>
+                      <td className="px-5 py-3.5 align-top text-center whitespace-nowrap">
+                        <div className="inline-flex items-center justify-center gap-1.5">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              r.status === 'APPROVED'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : r.status === 'PENDING'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
+                          >
+                            {r.status}
+                          </span>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAuditEntry(r)}
+                              disabled={deletingId === r.id}
+                              title="Delete Audit Entry"
+                              className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer disabled:opacity-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                         {r.approved_by && (
                           <div className="text-[10px] text-slate-400 mt-1">
                             By {r.approved_by?.name || 'Manager'}

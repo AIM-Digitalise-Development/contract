@@ -25,6 +25,8 @@ const UNIT_OPTIONS = [
   { value: 'box', label: 'Boxes (box)' },
   { value: 'bags', label: 'Bags (bags)' },
   { value: 'mtr', label: 'Meters (mtr)' },
+  { value: 'RFT', label: 'RFT (Running Feet)' },
+  { value: 'rft', label: 'Running Feet (rft)' },
   { value: 'ton', label: 'Metric Ton (ton)' },
   { value: 'units', label: 'Units (units)' },
   { value: 'pack', label: 'Packs (pack)' },

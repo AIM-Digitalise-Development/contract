@@ -42,6 +42,11 @@ export const stockService = {
     });
     return response.data;
   },
+
+  async deleteStockEntry(id) {
+    const response = await api.delete(`/stock-entries/${id}`);
+    return response.data;
+  },
 };
 
 export default stockService;

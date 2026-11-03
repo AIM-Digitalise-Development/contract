@@ -27,12 +27,13 @@ import {
   Briefcase, 
   MapPin, 
   Calendar,
-  Download
+  Download,
+  Trash2,
 } from 'lucide-react';
 import { exportToCSV } from '../../utils/csvExport';
 
 export default function StockOverview() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const toast = useToast();
 
   // Tab 1: entries ('Stock List Approval')
@@ -216,6 +217,26 @@ export default function StockOverview() {
       toast.error(extractErrorMessage(err, 'Failed to reject stock entry.'));
     } finally {
       setRejectingEntry(false);
+    }
+  };
+
+  const [deletingEntryId, setDeletingEntryId] = useState(null);
+
+  const handleDeleteStockEntry = async (entry) => {
+    const cleanEntryNum = String(entry.entry_number || entry.id).replace(/^#+/, '');
+    if (!window.confirm(`Are you sure you want to delete Stock Procurement Entry ${cleanEntryNum}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingEntryId(entry.id);
+    try {
+      await stockService.deleteStockEntry(entry.id);
+      toast.success(`Stock Entry ${cleanEntryNum} deleted successfully.`);
+      fetchData(pagination.current_page || 1);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to delete stock entry.'));
+    } finally {
+      setDeletingEntryId(null);
     }
   };
 
@@ -576,10 +597,23 @@ export default function StockOverview() {
                           {entry.quantity} {entry.product?.unit}
                         </td>
                         <td className="px-5 py-3.5 text-slate-600">{entry.requester?.name || 'Staff'}</td>
-                        <td className="px-5 py-3.5">
-                          <Badge variant={entry.status}>
-                            {entry.status}
-                          </Badge>
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            <Badge variant={entry.status}>
+                              {entry.status}
+                            </Badge>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStockEntry(entry)}
+                                disabled={deletingEntryId === entry.id}
+                                title="Delete Stock Entry"
+                                className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer disabled:opacity-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                           {entry.status === 'REJECTED' && entry.rejection_reason && (
                             <div className="text-[11px] text-rose-600 mt-1 italic">
                               Reason: {entry.rejection_reason}
@@ -621,9 +655,33 @@ export default function StockOverview() {
                               >
                                 Reject
                               </Button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStockEntry(entry)}
+                                  disabled={deletingEntryId === entry.id}
+                                  title="Delete Stock Entry"
+                                  className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer border border-transparent hover:border-rose-200 disabled:opacity-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-400">—</span>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStockEntry(entry)}
+                                  disabled={deletingEntryId === entry.id}
+                                  title="Delete Stock Entry"
+                                  className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer border border-transparent hover:border-rose-200 disabled:opacity-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {!isAdmin && <span className="text-xs text-slate-400">—</span>}
+                            </div>
                           )}
                         </td>
                       </tr>
