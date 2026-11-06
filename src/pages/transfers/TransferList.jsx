@@ -27,6 +27,7 @@ export default function TransferList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   // Dropdown lists
   const [primaryGodowns, setPrimaryGodowns] = useState([]);
@@ -318,8 +319,13 @@ export default function TransferList() {
           currentPage={pagination.current_page}
           lastPage={pagination.last_page}
           total={pagination.total}
-          perPage={pagination.per_page}
-          onPageChange={fetchTransfers}
+          perPage={perPage}
+          onPageChange={(page) => fetchTransfers(page, perPage)}
+          onPerPageChange={(newPerPage) => {
+            setPerPage(newPerPage);
+            fetchTransfers(1, newPerPage);
+          }}
+          perPageOptions={[10, 25, 50, 100]}
         />
       </div>
 

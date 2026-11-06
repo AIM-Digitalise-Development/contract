@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce';
 import stockService from '../../services/stockService';
+import openingStockService from '../../services/openingStockService';
 import godownService from '../../services/godownService';
 import productService from '../../services/productService';
 import { extractErrorMessage } from '../../services/api';
@@ -28,7 +29,16 @@ import {
   MapPin, 
   Calendar,
   Download,
+  History,
   Trash2,
+  PackageCheck,
+  BarChart3,
+  AlertTriangle,
+  Layers,
+  ArrowRight,
+  TrendingDown,
+  TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 import { exportToCSV } from '../../utils/csvExport';
 
@@ -40,26 +50,66 @@ export default function StockOverview() {
   // Tab 2: stock ('Available Stock')
   // Tab 3: godown_transactions ('Godown Transaction')
   // Tab 4: worker_transactions ('Worker Transaction')
+  // Tab 5: closing_stock ('Closing Stock') - NEW
   const [activeTab, setActiveTab] = useState('entries');
 
-  // Data states
+  // General Data states
   const [stockItems, setStockItems] = useState([]);
   const [entries, setEntries] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   // Filter dropdown options
   const [godownOptions, setGodownOptions] = useState([]);
   const [productOptions, setProductOptions] = useState([]);
 
-  // Selected filters
+  // Selected filters for standard tabs
   const [godownFilter, setGodownFilter] = useState('');
   const [productFilter, setProductFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
+
+  // ==========================================
+  // CLOSING STOCK STATE
+  // ==========================================
+  const [closingPeriod, setClosingPeriod] = useState('today'); // 'today' | 'this_week' | 'this_month' | 'this_year' | 'custom'
+  const [closingStartDate, setClosingStartDate] = useState('');
+  const [closingEndDate, setClosingEndDate] = useState('');
+  const [closingGodownFilter, setClosingGodownFilter] = useState('');
+  const [closingSearch, setClosingSearch] = useState('');
+  const debouncedClosingSearch = useDebounce(closingSearch, 300);
+  const [closingPerPage, setClosingPerPage] = useState(10);
+  const [closingPage, setClosingPage] = useState(1);
+  const [closingSortBy, setClosingSortBy] = useState('product_name');
+  const [closingSortOrder, setClosingSortOrder] = useState('asc');
+
+  const [closingData, setClosingData] = useState({
+    label: "Today's Closing Stock",
+    period_info: {},
+    summary: {
+      total_opening_stock: 0,
+      total_inbound_stock: 0,
+      total_outbound_stock: 0,
+      total_closing_stock: 0,
+      total_products: 0,
+      zero_stock_products: 0,
+      low_stock_products: 0,
+    },
+    items: [],
+    pagination: { current_page: 1, last_page: 1, total: 0, per_page: 10 },
+  });
+  const [closingLoading, setClosingLoading] = useState(false);
+  const [closingError, setClosingError] = useState('');
+
+  // Closing Stock Detailed Ledger Modal State
+  const [closingLedgerModalOpen, setClosingLedgerModalOpen] = useState(false);
+  const [selectedClosingProduct, setSelectedClosingProduct] = useState(null);
+  const [closingLedgerData, setClosingLedgerData] = useState(null);
+  const [closingLedgerLoading, setClosingLedgerLoading] = useState(false);
 
   // Quick Approve Modal for pending entries
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
@@ -85,6 +135,14 @@ export default function StockOverview() {
     remarks: '',
   });
 
+  const [deletingEntryId, setDeletingEntryId] = useState(null);
+
+  // Centralized Product Stock Ledger & Calculation Modal (Available Stock Tab)
+  const [selectedProductForLedger, setSelectedProductForLedger] = useState(null);
+  const [productLedgerModalOpen, setProductLedgerModalOpen] = useState(false);
+  const [productLedgerData, setProductLedgerData] = useState(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
   const optionsLoadedRef = useRef(false);
 
   // Load dropdown options once
@@ -106,62 +164,145 @@ export default function StockOverview() {
     loadOptions();
   }, []);
 
-  const fetchData = useCallback(async (page = 1) => {
+  // Fetch Data for Standard Tabs
+  const fetchData = useCallback(async (page = 1, currentPerPage = perPage) => {
+    if (activeTab === 'closing_stock') return; // Handled separately
     setLoading(true);
     setError('');
     try {
       if (activeTab === 'stock') {
         const res = await stockService.getStock({
           page,
-          per_page: 10,
+          per_page: currentPerPage,
           godown_id: godownFilter || undefined,
           product_id: productFilter || undefined,
           search: debouncedSearch || undefined,
         });
         setStockItems(res.data?.items || []);
-        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
       } else if (activeTab === 'entries') {
         const res = await stockService.getStockEntries({
           page,
-          per_page: 10,
+          per_page: currentPerPage,
           godown_id: godownFilter || undefined,
           product_id: productFilter || undefined,
           status: statusFilter || undefined,
           search: debouncedSearch || undefined,
         });
         setEntries(res.data?.items || []);
-        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
       } else if (activeTab === 'godown_transactions') {
         const res = await stockService.getTransactions({
           page,
-          per_page: 10,
+          per_page: currentPerPage,
           category: 'godown',
           godown_id: godownFilter || undefined,
           product_id: productFilter || undefined,
         });
         setTransactions(res.data?.items || []);
-        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
       } else if (activeTab === 'worker_transactions') {
         const res = await stockService.getTransactions({
           page,
-          per_page: 10,
+          per_page: currentPerPage,
           category: 'worker',
           godown_id: godownFilter || undefined,
           product_id: productFilter || undefined,
         });
         setTransactions(res.data?.items || []);
-        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+        setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
       }
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to fetch inventory data.'));
     } finally {
       setLoading(false);
     }
-  }, [activeTab, godownFilter, productFilter, statusFilter, debouncedSearch]);
+  }, [activeTab, godownFilter, productFilter, statusFilter, debouncedSearch, perPage]);
 
+  // Fetch Closing Stock Data
+  const fetchClosingStock = useCallback(async (page = closingPage, currentPerPage = closingPerPage) => {
+    setClosingLoading(true);
+    setClosingError('');
+    try {
+      const params = {
+        period: closingPeriod,
+        page,
+        per_page: currentPerPage,
+        godown_id: closingGodownFilter || undefined,
+        search: debouncedClosingSearch || undefined,
+        sort_by: closingSortBy,
+        sort_order: closingSortOrder,
+      };
+      if (closingPeriod === 'custom') {
+        if (closingStartDate) params.start_date = closingStartDate;
+        if (closingEndDate) params.end_date = closingEndDate;
+      }
+      const res = await stockService.getClosingStock(params);
+      if (res.data) {
+        setClosingData(res.data);
+      }
+    } catch (err) {
+      setClosingError(extractErrorMessage(err, 'Failed to fetch closing stock report.'));
+    } finally {
+      setClosingLoading(false);
+    }
+  }, [
+    closingPeriod,
+    closingStartDate,
+    closingEndDate,
+    closingGodownFilter,
+    debouncedClosingSearch,
+    closingSortBy,
+    closingSortOrder,
+    closingPage,
+    closingPerPage,
+  ]);
+
+  // Trigger data load on tab change or filters change
   useEffect(() => {
-    fetchData(1);
-  }, [fetchData]);
+    if (activeTab === 'closing_stock') {
+      fetchClosingStock(1, closingPerPage);
+    } else {
+      fetchData(1, perPage);
+    }
+  }, [activeTab, fetchData, fetchClosingStock]);
+
+  // Open Product Ledger Modal for Closing Stock Tab
+  const handleOpenClosingProductLedger = async (product) => {
+    setSelectedClosingProduct(product);
+    setClosingLedgerModalOpen(true);
+    setClosingLedgerLoading(true);
+    try {
+      const params = {
+        period: closingPeriod,
+        godown_id: closingGodownFilter || undefined,
+      };
+      if (closingPeriod === 'custom') {
+        if (closingStartDate) params.start_date = closingStartDate;
+        if (closingEndDate) params.end_date = closingEndDate;
+      }
+      const res = await stockService.getClosingStockProductLedger(product.product_id || product.id, params);
+      setClosingLedgerData(res.data || null);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to load detailed product ledger.'));
+    } finally {
+      setClosingLedgerLoading(false);
+    }
+  };
+
+  const handleOpenProductLedger = async (product, godown = null) => {
+    setSelectedProductForLedger({ product, godown });
+    setProductLedgerModalOpen(true);
+    setLedgerLoading(true);
+    try {
+      const res = await openingStockService.getProductLedger(product.id, godown?.id || null);
+      setProductLedgerData(res.data || null);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to calculate product stock ledger.'));
+    } finally {
+      setLedgerLoading(false);
+    }
+  };
 
   const handleOpenApproveModal = (entry) => {
     setSelectedEntryToApprove(entry);
@@ -176,13 +317,12 @@ export default function StockOverview() {
     setApprovingEntry(true);
     try {
       await stockService.approveStockEntry(selectedEntryToApprove.id, approveRemarks);
-      // Clean display without #
       const cleanEntryNum = String(selectedEntryToApprove.entry_number || selectedEntryToApprove.id).replace(/^#+/, '');
       toast.success(`Stock Entry ${cleanEntryNum} approved by ${user?.name || 'Staff'} (ID: ${user?.id}). Stock ledger updated.`);
       setIsApproveModalOpen(false);
       setSelectedEntryToApprove(null);
       setApproveRemarks('');
-      fetchData(pagination.current_page);
+      fetchData(pagination.current_page, perPage);
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to approve stock entry.'));
     } finally {
@@ -212,15 +352,13 @@ export default function StockOverview() {
       setIsRejectModalOpen(false);
       setSelectedEntryToReject(null);
       setRejectReason('');
-      fetchData(pagination.current_page);
+      fetchData(pagination.current_page, perPage);
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to reject stock entry.'));
     } finally {
       setRejectingEntry(false);
     }
   };
-
-  const [deletingEntryId, setDeletingEntryId] = useState(null);
 
   const handleDeleteStockEntry = async (entry) => {
     const cleanEntryNum = String(entry.entry_number || entry.id).replace(/^#+/, '');
@@ -232,7 +370,7 @@ export default function StockOverview() {
     try {
       await stockService.deleteStockEntry(entry.id);
       toast.success(`Stock Entry ${cleanEntryNum} deleted successfully.`);
-      fetchData(pagination.current_page || 1);
+      fetchData(pagination.current_page || 1, perPage);
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to delete stock entry.'));
     } finally {
@@ -271,7 +409,7 @@ export default function StockOverview() {
       toast.success('Stock entry submitted and awaiting supervisor approval.');
       setIsEntryModalOpen(false);
       setActiveTab('entries');
-      fetchData(1);
+      fetchData(1, perPage);
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to submit stock entry.'));
     } finally {
@@ -282,7 +420,58 @@ export default function StockOverview() {
   const handleExportCSV = async () => {
     setIsExporting(true);
     try {
-      if (activeTab === 'entries') {
+      if (activeTab === 'closing_stock') {
+        let exportData = closingData.items || [];
+        try {
+          const params = {
+            period: closingPeriod,
+            per_page: 2000,
+            godown_id: closingGodownFilter || undefined,
+            search: debouncedClosingSearch || undefined,
+            sort_by: closingSortBy,
+            sort_order: closingSortOrder,
+          };
+          if (closingPeriod === 'custom') {
+            if (closingStartDate) params.start_date = closingStartDate;
+            if (closingEndDate) params.end_date = closingEndDate;
+          }
+          const res = await stockService.getClosingStock(params);
+          if (res?.data?.items && res.data.items.length > 0) {
+            exportData = res.data.items;
+          }
+        } catch (e) {
+          console.warn('Fallback to current page for Closing Stock CSV:', e);
+        }
+
+        if (!exportData || exportData.length === 0) {
+          toast.warning('No closing stock records found to export.');
+          return;
+        }
+
+        exportToCSV({
+          filename: `Closing_Stock_${closingPeriod}_${new Date().toISOString().slice(0, 10)}.csv`,
+          columns: [
+            { label: 'Product Code', key: 'product_code' },
+            { label: 'Product Name', key: 'product_name' },
+            { label: 'Unit', key: 'unit' },
+            { label: 'Opening Qty', key: 'opening_qty' },
+            { label: 'Inbound Qty', key: 'inbound_qty' },
+            { label: 'Outbound Qty', key: 'outbound_qty' },
+            { label: 'Closing Qty', key: 'closing_qty' },
+            { label: 'Min Alert Qty', key: 'min_stock_alert' },
+            { 
+              label: 'Stock Status', 
+              format: (item) => {
+                if (item.closing_qty <= 0) return 'OUT OF STOCK';
+                if (item.closing_qty <= item.min_stock_alert) return 'LOW STOCK';
+                return 'IN STOCK';
+              }
+            },
+          ],
+          data: exportData,
+        });
+        toast.success(`Exported ${exportData.length} closing stock records for ${closingData.label || closingPeriod}.`);
+      } else if (activeTab === 'entries') {
         let exportData = entries;
         try {
           const res = await stockService.getStockEntries({
@@ -441,7 +630,7 @@ export default function StockOverview() {
     <div className="space-y-6">
       <PageHeader
         title="Stock Procurement & Ledger"
-        description="Inspect stock requests requiring approval, view available godown stocks, and track godown or worker transactions."
+        description="Inspect stock requests requiring approval, view available godown stocks, track transaction ledgers, and analyze closing stock balances."
       >
         <div className="flex items-center gap-2">
           <Button 
@@ -459,11 +648,11 @@ export default function StockOverview() {
         </div>
       </PageHeader>
 
-      {/* Clean Tabs without numbers */}
-      <div className="flex border-b border-slate-200 gap-1 bg-white px-2 pt-2 rounded-t-xl border-t border-x">
+      {/* Tabs Bar */}
+      <div className="flex border-b border-slate-200 gap-1 bg-white px-2 pt-2 rounded-t-xl border-t border-x overflow-x-auto">
         <button
           onClick={() => setActiveTab('entries')}
-          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'entries'
               ? 'border-blue-600 text-blue-600 bg-blue-50/50'
               : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -474,7 +663,7 @@ export default function StockOverview() {
         </button>
         <button
           onClick={() => setActiveTab('stock')}
-          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'stock'
               ? 'border-blue-600 text-blue-600 bg-blue-50/50'
               : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -485,7 +674,7 @@ export default function StockOverview() {
         </button>
         <button
           onClick={() => setActiveTab('godown_transactions')}
-          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'godown_transactions'
               ? 'border-blue-600 text-blue-600 bg-blue-50/50'
               : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -496,7 +685,7 @@ export default function StockOverview() {
         </button>
         <button
           onClick={() => setActiveTab('worker_transactions')}
-          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'worker_transactions'
               ? 'border-blue-600 text-blue-600 bg-blue-50/50'
               : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -505,473 +694,864 @@ export default function StockOverview() {
           <Users className="w-4 h-4" />
           Worker Transaction
         </button>
+        <button
+          onClick={() => setActiveTab('closing_stock')}
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'closing_stock'
+              ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <PackageCheck className="w-4 h-4 text-blue-600" />
+          <span>Closing Stock</span>
+          <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.2 rounded font-semibold">New</span>
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <Input
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Select
-          value={godownFilter}
-          onChange={(e) => setGodownFilter(e.target.value)}
-          placeholder="All Godowns"
-          options={godownOptions.map((g) => ({ value: g.id, label: `${g.name} (${g.type})` }))}
-        />
-        <Select
-          value={productFilter}
-          onChange={(e) => setProductFilter(e.target.value)}
-          placeholder="All Products"
-          options={productOptions.map((p) => ({ value: p.id, label: `${p.name} (${p.code})` }))}
-        />
-        {activeTab === 'entries' && (
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            placeholder="All Statuses"
-            options={[
-              { value: 'PENDING', label: 'PENDING' },
-              { value: 'APPROVED', label: 'APPROVED' },
-              { value: 'REJECTED', label: 'REJECTED' },
-            ]}
+      {/* Filters for Standard Tabs (1-4) */}
+      {activeTab !== 'closing_stock' && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <Input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-        )}
-      </div>
+          <Select
+            value={godownFilter}
+            onChange={(e) => setGodownFilter(e.target.value)}
+            placeholder="All Godowns"
+            options={godownOptions.map((g) => ({ value: g.id, label: `${g.name} (${g.type})` }))}
+          />
+          <Select
+            value={productFilter}
+            onChange={(e) => setProductFilter(e.target.value)}
+            placeholder="All Products"
+            options={productOptions.map((p) => ({ value: p.id, label: `${p.name} (${p.code})` }))}
+          />
+          {activeTab === 'entries' && (
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              placeholder="All Statuses"
+              options={[
+                { value: 'PENDING', label: 'PENDING' },
+                { value: 'APPROVED', label: 'APPROVED' },
+                { value: 'REJECTED', label: 'REJECTED' },
+              ]}
+            />
+          )}
+        </div>
+      )}
 
-      {/* Main Content Area */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        {loading ? (
-          <div className="p-12 flex justify-center">
-            <Spinner size="lg" className="text-blue-600" />
-          </div>
-        ) : error ? (
-          <div className="p-6">
-            <ErrorState message={error} onRetry={() => fetchData(pagination.current_page)} />
-          </div>
-        ) : activeTab === 'entries' ? (
-          /* TAB 1: STOCK LIST APPROVAL */
-          /* Rule: Serial Number / ID -> Date -> Other Information */
-          entries.length === 0 ? (
-            <div className="p-6">
-              <EmptyState
-                title="No stock entry requests requiring approval"
-                description="All submitted procurement stock entries have been processed."
-                actionLabel="+ Create Stock Entry Request"
-                onAction={handleOpenEntryModal}
+      {/* ===================================================================== */}
+      {/* TAB 5: CLOSING STOCK MODULE                                           */}
+      {/* ===================================================================== */}
+      {activeTab === 'closing_stock' && (
+        <div className="space-y-5">
+          {/* Period Filter Header & Controls */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {closingData.label || "Closing Stock Summary"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Accurate balance calculated strictly from inventory movements: Closing = Opening + Inbound - Outbound
+                  </p>
+                </div>
+              </div>
+
+              {/* Date Filter Quick Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                {[
+                  { id: 'today', label: 'Today' },
+                  { id: 'this_week', label: 'This Week' },
+                  { id: 'this_month', label: 'This Month' },
+                  { id: 'this_year', label: 'This Year' },
+                  { id: 'custom', label: 'Custom Range' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setClosingPeriod(p.id);
+                      setClosingPage(1);
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      closingPeriod === p.id
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Range & Filter Selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1">
+              <Input
+                placeholder="Search product code or name..."
+                value={closingSearch}
+                onChange={(e) => {
+                  setClosingSearch(e.target.value);
+                  setClosingPage(1);
+                }}
               />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-5 py-3.5">Entry ID</th>
-                    <th className="px-5 py-3.5">Date</th>
-                    <th className="px-5 py-3.5">Product</th>
-                    <th className="px-5 py-3.5">Godown</th>
-                    <th className="px-5 py-3.5">Location</th>
-                    <th className="px-5 py-3.5 text-right">Quantity</th>
-                    <th className="px-5 py-3.5">Requester</th>
-                    <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5">Approver</th>
-                    <th className="px-5 py-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {entries.map((entry) => {
-                    const cleanEntryId = String(entry.entry_number || entry.id).replace(/^#+/, '');
-                    return (
-                      <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
-                          {cleanEntryId}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                          {entry.created_at ? new Date(entry.created_at).toLocaleDateString() : '—'}
-                        </td>
-                        <td className="px-5 py-3.5 font-medium text-slate-900">{entry.product?.name}</td>
-                        <td className="px-5 py-3.5 text-slate-800">{entry.godown?.name}</td>
-                        <td className="px-5 py-3.5 text-slate-500">{entry.internal_location || '—'}</td>
-                        <td className="px-5 py-3.5 text-right font-bold text-slate-900">
-                          {entry.quantity} {entry.product?.unit}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600">{entry.requester?.name || 'Staff'}</td>
-                        <td className="px-5 py-3.5 whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5">
-                            <Badge variant={entry.status}>
-                              {entry.status}
-                            </Badge>
-                            {isAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteStockEntry(entry)}
-                                disabled={deletingEntryId === entry.id}
-                                title="Delete Stock Entry"
-                                className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer disabled:opacity-50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                          {entry.status === 'REJECTED' && entry.rejection_reason && (
-                            <div className="text-[11px] text-rose-600 mt-1 italic">
-                              Reason: {entry.rejection_reason}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {entry.approver?.name || entry.approver_name ? (
-                            <div>
-                              <span className="font-semibold text-slate-800">
-                                {entry.approver?.name || entry.approver_name}
-                              </span>
-                              <span className="block text-[11px] text-blue-600 font-mono">
-                                ID: {entry.approver?.id || entry.approver_id}
-                              </span>
-                            </div>
-                          ) : entry.status === 'PENDING' ? (
-                            <span className="text-amber-600 font-medium">Pending Review</span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                          {entry.status === 'PENDING' ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="success"
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
-                                onClick={() => handleOpenApproveModal(entry)}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200"
-                                onClick={() => handleOpenRejectModal(entry)}
-                              >
-                                Reject
-                              </Button>
-                              {isAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteStockEntry(entry)}
-                                  disabled={deletingEntryId === entry.id}
-                                  title="Delete Stock Entry"
-                                  className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer border border-transparent hover:border-rose-200 disabled:opacity-50"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1.5">
-                              {isAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteStockEntry(entry)}
-                                  disabled={deletingEntryId === entry.id}
-                                  title="Delete Stock Entry"
-                                  className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer border border-transparent hover:border-rose-200 disabled:opacity-50"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              {!isAdmin && <span className="text-xs text-slate-400">—</span>}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
-        ) : activeTab === 'stock' ? (
-          /* TAB 2: AVAILABLE STOCK */
-          stockItems.length === 0 ? (
-            <div className="p-6">
-              <EmptyState
-                title="No approved stock found"
-                description="No stock entries have been approved yet for this selection."
-                actionLabel="+ Create Stock Entry Request"
-                onAction={handleOpenEntryModal}
+              <Select
+                value={closingGodownFilter}
+                onChange={(e) => {
+                  setClosingGodownFilter(e.target.value);
+                  setClosingPage(1);
+                }}
+                placeholder="All Warehouses (Consolidated)"
+                options={godownOptions.map((g) => ({ value: g.id, label: `${g.name} (${g.type})` }))}
               />
+              {closingPeriod === 'custom' ? (
+                <>
+                  <Input
+                    type="date"
+                    label="Start Date"
+                    value={closingStartDate}
+                    onChange={(e) => setClosingStartDate(e.target.value)}
+                  />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Input
+                        type="date"
+                        label="End Date"
+                        value={closingEndDate}
+                        onChange={(e) => setClosingEndDate(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      onClick={() => fetchClosingStock(1, closingPerPage)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="sm:col-span-2 flex items-center justify-end">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => fetchClosingStock(closingPage, closingPerPage)}
+                    loading={closingLoading}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                    Refresh Calculation
+                  </Button>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-5 py-3.5">Product</th>
-                    <th className="px-5 py-3.5">Code</th>
-                    <th className="px-5 py-3.5">Godown</th>
-                    <th className="px-5 py-3.5">Godown Type</th>
-                    <th className="px-5 py-3.5 text-right">Available Stock</th>
-                    <th className="px-5 py-3.5 text-right">Last Movement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {stockItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-5 py-3.5 font-semibold text-slate-900">{item.product?.name}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-blue-600">{item.product?.code}</td>
-                      <td className="px-5 py-3.5 text-slate-800">{item.godown?.name}</td>
-                      <td className="px-5 py-3.5">
-                        <Badge variant={item.godown?.type === 'PRIMARY' ? 'primary' : 'retail'}>
-                          {item.godown?.type}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <span className="font-bold text-sm text-emerald-700">
-                          {Number(item.quantity).toLocaleString()}
-                        </span>{' '}
-                        <span className="text-slate-500">{item.product?.unit}</span>
-                      </td>
-                      <td className="px-5 py-3.5 text-right text-slate-500">
-                        {item.updated_at ? new Date(item.updated_at).toLocaleString() : '—'}
-                      </td>
+          </div>
+
+          {/* 7 KPI Dashboard Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+            {/* 1. Total Opening Stock */}
+            <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-purple-700 text-xs font-bold">
+                <span>Total Opening</span>
+                <Boxes className="w-4 h-4 text-purple-600" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl font-black text-purple-950 font-mono">
+                  {Number(closingData.summary?.total_opening_stock || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-purple-600 font-medium">Prior to period</div>
+              </div>
+            </div>
+
+            {/* 2. Total Inbound Stock */}
+            <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-emerald-700 text-xs font-bold">
+                <span>Total Inbound</span>
+                <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl font-black text-emerald-950 font-mono">
+                  +{Number(closingData.summary?.total_inbound_stock || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-emerald-600 font-medium">Procured / returned</div>
+              </div>
+            </div>
+
+            {/* 3. Total Outbound Stock */}
+            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-amber-800 text-xs font-bold">
+                <span>Total Outbound</span>
+                <ArrowUpRight className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl font-black text-amber-950 font-mono">
+                  -{Number(closingData.summary?.total_outbound_stock || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-amber-700 font-medium">Issued / consumed</div>
+              </div>
+            </div>
+
+            {/* 4. Total Closing Stock (Prominent Highlight) */}
+            <div className="bg-blue-600 text-white rounded-xl p-3.5 flex flex-col justify-between shadow-sm col-span-2 sm:col-span-1">
+              <div className="flex items-center justify-between text-blue-100 text-xs font-bold">
+                <span>Total Closing</span>
+                <PackageCheck className="w-4 h-4 text-white" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-black font-mono">
+                  {Number(closingData.summary?.total_closing_stock || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-blue-200 font-medium">Net available balance</div>
+              </div>
+            </div>
+
+            {/* 5. Total Products */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-700 text-xs font-bold">
+                <span>Total Items</span>
+                <Layers className="w-4 h-4 text-slate-500" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl font-black text-slate-900 font-mono">
+                  {closingData.summary?.total_products || 0}
+                </div>
+                <div className="text-[10px] text-slate-500 font-medium">Catalog SKUs</div>
+              </div>
+            </div>
+
+            {/* 6. Products with Zero Stock */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-700 text-xs font-bold">
+                <span>Zero Stock</span>
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl font-black text-amber-700 font-mono">
+                  {closingData.summary?.zero_stock_products || 0}
+                </div>
+                <div className="text-[10px] text-slate-500 font-medium">Needs reorder</div>
+              </div>
+            </div>
+
+            {/* 7. Products with Low Stock */}
+            <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-rose-700 text-xs font-bold">
+                <span>Low Stock</span>
+                <TrendingDown className="w-4 h-4 text-rose-600" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl font-black text-rose-950 font-mono">
+                  {closingData.summary?.low_stock_products || 0}
+                </div>
+                <div className="text-[10px] text-rose-600 font-medium">Below alert limit</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Product-Wise Daily Closing Stock Summary Table */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-slate-50/60">
+              <div className="flex items-center gap-2">
+                <PackageCheck className="w-4 h-4 text-blue-600" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Daily Closing Stock Transactions ({closingData.pagination?.total || 0} Products)
+                </h4>
+              </div>
+              <div className="text-xs text-slate-500">
+                Formula: <span className="font-semibold text-slate-800">Closing = Opening + Inbound - Outbound</span>
+              </div>
+            </div>
+
+            {closingLoading ? (
+              <div className="p-12 flex justify-center">
+                <Spinner size="lg" className="text-blue-600" />
+              </div>
+            ) : closingError ? (
+              <div className="p-6">
+                <ErrorState message={closingError} onRetry={() => fetchClosingStock(closingPage, closingPerPage)} />
+              </div>
+            ) : !closingData.items || closingData.items.length === 0 ? (
+              <div className="p-8">
+                <EmptyState
+                  title="No products found"
+                  description="No products match the selected period or warehouse filter."
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3.5">Product Code</th>
+                      <th className="px-5 py-3.5">Product Name</th>
+                      <th className="px-5 py-3.5">Unit</th>
+                      <th className="px-5 py-3.5 text-right">Opening Qty</th>
+                      <th className="px-5 py-3.5 text-right">Inbound (+)</th>
+                      <th className="px-5 py-3.5 text-right">Outbound (-)</th>
+                      <th className="px-5 py-3.5 text-right">Closing Qty</th>
+                      <th className="px-5 py-3.5 text-center">Status</th>
+                      <th className="px-5 py-3.5 text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        ) : activeTab === 'godown_transactions' ? (
-          /* TAB 3: GODOWN TRANSACTION */
-          /* Rule: Transfer -> Date -> Other Information; No '#' symbol */
-          transactions.length === 0 ? (
-            <div className="p-6">
-              <EmptyState title="No godown transactions recorded" description="No godown ledger movements have taken place yet." />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-5 py-3.5">Transfer</th>
-                    <th className="px-5 py-3.5">Date</th>
-                    <th className="px-5 py-3.5">Movement Type</th>
-                    <th className="px-5 py-3.5">Transfer Route</th>
-                    <th className="px-5 py-3.5">Godown Type Flow</th>
-                    <th className="px-5 py-3.5">Product</th>
-                    <th className="px-5 py-3.5 text-right">Movement Qty</th>
-                    <th className="px-5 py-3.5 text-right">Balance Before &rarr; After</th>
-                    <th className="px-5 py-3.5">Logged By</th>
-                    <th className="px-5 py-3.5">Remarks</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {transactions.map((tx) => {
-                    const cleanRef = String(tx.reference_number || tx.id).replace(/^#+/, '');
-                    const isEntry = tx.type === 'STOCK_ENTRY';
-                    const isIn = tx.type === 'TRANSFER_IN' || isEntry;
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {closingData.items.map((item) => {
+                      const isZero = item.closing_qty <= 0;
+                      const isLow = item.closing_qty > 0 && item.closing_qty <= item.min_stock_alert;
 
-                    return (
-                      <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
-                          {cleanRef}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                          {tx.created_at ? new Date(tx.created_at).toLocaleString() : '—'}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isEntry
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : tx.type === 'TRANSFER_IN'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}>
-                            {isIn ? (
-                              <ArrowDownLeft className="w-3 h-3" />
+                      return (
+                        <tr key={item.product_id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-blue-600">
+                            {item.product_code}
+                          </td>
+                          <td className="px-5 py-3.5 font-semibold text-slate-900">
+                            {item.product_name}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 uppercase font-medium">
+                            {item.unit}
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono font-medium text-purple-900">
+                            {Number(item.opening_qty).toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                            {item.inbound_qty > 0 ? (
+                              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
+                                +{Number(item.inbound_qty).toLocaleString()}
+                              </span>
                             ) : (
-                              <ArrowUpRight className="w-3 h-3" />
+                              <span className="text-slate-400 font-mono">0</span>
                             )}
-                            {isEntry ? 'STOCK ENTRY' : tx.type}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {isEntry ? (
-                            <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                              <span className="text-slate-400">Direct Inward &rarr;</span>
-                              <span className="font-semibold text-slate-900">{tx.godown?.name || 'Central Godown'}</span>
-                            </div>
-                          ) : (
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                                <span className="text-slate-900">{tx.source_godown?.name || tx.godown?.name || 'G1'}</span>
-                                <span className="text-slate-400">&rarr;</span>
-                                <span className="text-slate-900">{tx.destination_godown?.name || 'G2'}</span>
-                              </div>
-                              <div className="text-[11px] text-slate-500">
-                                Recorded at: <span className="font-medium text-slate-700">{tx.godown?.name}</span>
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {isEntry ? (
-                            <Badge variant={tx.godown?.type === 'PRIMARY' ? 'primary' : 'retail'} size="sm">
-                              {tx.godown?.type || 'PRIMARY'} Godown
-                            </Badge>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <Badge variant={tx.source_godown?.type === 'PRIMARY' ? 'primary' : 'retail'} size="sm">
-                                {tx.source_godown?.type || 'PRIMARY'}
-                              </Badge>
-                              <span className="text-slate-400 text-xs font-bold">&rarr;</span>
-                              <Badge variant={tx.destination_godown?.type === 'PRIMARY' ? 'primary' : 'retail'} size="sm">
-                                {tx.destination_godown?.type || 'RETAIL'}
-                              </Badge>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="font-medium text-slate-900">{tx.product?.name}</div>
-                          <div className="font-mono text-[10px] text-blue-600">{tx.product?.code}</div>
-                        </td>
-                        <td className="px-5 py-3.5 text-right font-bold whitespace-nowrap">
-                          <span className={tx.type === 'TRANSFER_OUT' ? 'text-amber-700' : 'text-emerald-700'}>
-                            {tx.type === 'TRANSFER_OUT' ? `-${tx.quantity}` : `+${tx.quantity}`} {tx.product?.unit || 'units'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-right font-mono text-slate-600 whitespace-nowrap">
-                          {tx.balance_before} &rarr; <span className="font-semibold text-slate-900">{tx.balance_after}</span>
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                          {tx.created_by?.name || 'System Admin'}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-500 max-w-xs truncate text-[11px]">
-                          {tx.remarks || '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
-        ) : (
-          /* TAB 4: WORKER TRANSACTION */
-          /* Rule: Transfer -> Date -> Other Information; No '#' symbol */
-          transactions.length === 0 ? (
-            <div className="p-6">
-              <EmptyState 
-                title="No worker transactions recorded" 
-                description="No stock movements (issued to workers, returned, or consumed) have been logged yet." 
-              />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-5 py-3.5">Transfer</th>
-                    <th className="px-5 py-3.5">Date</th>
-                    <th className="px-5 py-3.5">Movement Type</th>
-                    <th className="px-5 py-3.5">Worker</th>
-                    <th className="px-5 py-3.5">Client & Work Details</th>
-                    <th className="px-5 py-3.5">Product</th>
-                    <th className="px-5 py-3.5 text-right">Quantity</th>
-                    <th className="px-5 py-3.5">Warehouse / Logged By</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {transactions.map((tx) => {
-                    const cleanRef = String(tx.reference_number || tx.id).replace(/^#+/, '');
-                    const isIssued = tx.type === 'GODOWN_TO_WORKER';
-                    const isUsed = tx.type === 'WORKER_USAGE';
-                    const isReturned = tx.type === 'WORKER_TO_GODOWN';
+                          </td>
+                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                            {item.outbound_qty > 0 ? (
+                              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 font-mono">
+                                -{Number(item.outbound_qty).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono">0</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                            <span className={`text-sm font-black font-mono ${
+                              isZero ? 'text-slate-400' : isLow ? 'text-rose-700' : 'text-blue-700'
+                            }`}>
+                              {Number(item.closing_qty).toLocaleString()}
+                            </span>{' '}
+                            <span className="text-[10px] text-slate-400 uppercase">{item.unit}</span>
+                          </td>
+                          <td className="px-5 py-3.5 text-center whitespace-nowrap">
+                            {isZero ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                                Out of Stock
+                              </span>
+                            ) : isLow ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                                Low Stock
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                In Stock
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenClosingProductLedger(item)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-md transition cursor-pointer"
+                              title="Inspect Detailed Stock Ledger for this Period"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>View Ledger</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-                    const workerName = tx.worker?.name || (tx.remarks?.match(/by\s+([^:]+):/)?.[1]) || 'Assigned Worker';
-
-                    return (
-                      <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
-                          {cleanRef}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                          {tx.created_at ? new Date(tx.created_at).toLocaleString() : '—'}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isIssued
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : isUsed
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                              : 'bg-purple-50 text-purple-700 border border-purple-200'
-                          }`}>
-                            {isIssued && <ArrowDownLeft className="w-3 h-3" />}
-                            {isUsed && <Hammer className="w-3 h-3" />}
-                            {isReturned && <ArrowUpRight className="w-3 h-3" />}
-                            {isIssued ? 'Stock Issued' : isUsed ? 'Stock Used' : isReturned ? 'Stock Returned' : tx.type}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 font-semibold text-slate-900">
-                          <div className="flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{workerName}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5 max-w-xs">
-                          {tx.client ? (
-                            <div>
-                              <div className="font-bold text-slate-800 flex items-center gap-1">
-                                <Briefcase className="w-3 h-3 text-blue-600" />
-                                <span>{tx.client.name}</span>
-                              </div>
-                              {tx.work_title && (
-                                <div className="text-[11px] text-slate-600 font-medium">
-                                  {tx.work_title}
-                                </div>
-                              )}
-                              {tx.work_location && (
-                                <div className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
-                                  <MapPin className="w-2.5 h-2.5 text-rose-500" />
-                                  <span>{tx.work_location}</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 italic">Direct / Internal Work</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5 font-medium text-slate-900">{tx.product?.name}</td>
-                        <td className="px-5 py-3.5 text-right font-bold">
-                          <span className={isUsed ? 'text-amber-700' : isIssued ? 'text-blue-700' : 'text-purple-700'}>
-                            {isIssued ? `+${tx.quantity}` : `-${tx.quantity}`}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600">
-                          <div className="font-medium text-slate-800">{tx.godown?.name || 'Retail Godown'}</div>
-                          <div className="text-[11px] text-slate-400">By: {tx.created_by?.name || 'Authorized'}</div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-
-        {/* Pagination */}
-        {pagination.total > 0 && (
-          <div className="p-4 border-t border-slate-200">
+            {/* Closing Stock Pagination */}
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.last_page}
-              totalItems={pagination.total}
-              onPageChange={(page) => fetchData(page)}
+              currentPage={closingData.pagination?.current_page || 1}
+              lastPage={closingData.pagination?.last_page || 1}
+              total={closingData.pagination?.total || 0}
+              perPage={closingPerPage}
+              onPageChange={(page) => {
+                setClosingPage(page);
+                fetchClosingStock(page, closingPerPage);
+              }}
+              onPerPageChange={(newPerPage) => {
+                setClosingPerPage(newPerPage);
+                setClosingPage(1);
+                fetchClosingStock(1, newPerPage);
+              }}
+              perPageOptions={[10, 25, 50, 100]}
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TABS 1-4: STANDARD MODULES                                            */}
+      {/* ===================================================================== */}
+      {activeTab !== 'closing_stock' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          {loading ? (
+            <div className="p-12 flex justify-center">
+              <Spinner size="lg" className="text-blue-600" />
+            </div>
+          ) : error ? (
+            <div className="p-6">
+              <ErrorState message={error} onRetry={() => fetchData(pagination.current_page, perPage)} />
+            </div>
+          ) : activeTab === 'entries' ? (
+            /* TAB 1: STOCK LIST APPROVAL */
+            entries.length === 0 ? (
+              <div className="p-6">
+                <EmptyState
+                  title="No stock entry requests requiring approval"
+                  description="All submitted procurement stock entries have been processed."
+                  actionLabel="+ Create Stock Entry Request"
+                  onAction={handleOpenEntryModal}
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3.5">Entry ID</th>
+                      <th className="px-5 py-3.5">Date</th>
+                      <th className="px-5 py-3.5">Product</th>
+                      <th className="px-5 py-3.5">Godown</th>
+                      <th className="px-5 py-3.5">Location</th>
+                      <th className="px-5 py-3.5 text-right">Quantity</th>
+                      <th className="px-5 py-3.5">Requester</th>
+                      <th className="px-5 py-3.5">Status</th>
+                      <th className="px-5 py-3.5">Approver</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {entries.map((entry) => {
+                      const cleanEntryId = String(entry.entry_number || entry.id).replace(/^#+/, '');
+                      return (
+                        <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
+                            {cleanEntryId}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
+                            {entry.created_at ? new Date(entry.created_at).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="px-5 py-3.5 font-medium text-slate-900">{entry.product?.name}</td>
+                          <td className="px-5 py-3.5 text-slate-800">{entry.godown?.name}</td>
+                          <td className="px-5 py-3.5 text-slate-500">{entry.internal_location || '—'}</td>
+                          <td className="px-5 py-3.5 text-right font-bold text-slate-900">
+                            {entry.quantity} {entry.product?.unit}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600">{entry.requester?.name || 'Staff'}</td>
+                          <td className="px-5 py-3.5 whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5">
+                              <Badge variant={entry.status}>
+                                {entry.status}
+                              </Badge>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStockEntry(entry)}
+                                  disabled={deletingEntryId === entry.id}
+                                  title="Delete Stock Entry"
+                                  className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer disabled:opacity-50"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {entry.status === 'REJECTED' && entry.rejection_reason && (
+                              <div className="text-[11px] text-rose-600 mt-1 italic">
+                                Reason: {entry.rejection_reason}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {entry.approver?.name || entry.approver_name ? (
+                              <div>
+                                <span className="font-semibold text-slate-800">
+                                  {entry.approver?.name || entry.approver_name}
+                                </span>
+                                <span className="block text-[11px] text-blue-600 font-mono">
+                                  ID: {entry.approver?.id || entry.approver_id}
+                                </span>
+                              </div>
+                            ) : entry.status === 'PENDING' ? (
+                              <span className="text-amber-600 font-medium">Pending Review</span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                            {entry.status === 'PENDING' ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="success"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                                  onClick={() => handleOpenApproveModal(entry)}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200"
+                                  onClick={() => handleOpenRejectModal(entry)}
+                                >
+                                  Reject
+                                </Button>
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteStockEntry(entry)}
+                                    disabled={deletingEntryId === entry.id}
+                                    title="Delete Stock Entry"
+                                    className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer border border-transparent hover:border-rose-200 disabled:opacity-50"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteStockEntry(entry)}
+                                    disabled={deletingEntryId === entry.id}
+                                    title="Delete Stock Entry"
+                                    className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition cursor-pointer border border-transparent hover:border-rose-200 disabled:opacity-50"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {!isAdmin && <span className="text-xs text-slate-400">—</span>}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : activeTab === 'stock' ? (
+            /* TAB 2: AVAILABLE STOCK */
+            stockItems.length === 0 ? (
+              <div className="p-6">
+                <EmptyState
+                  title="No approved stock found"
+                  description="No stock entries have been approved yet for this selection."
+                  actionLabel="+ Create Stock Entry Request"
+                  onAction={handleOpenEntryModal}
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3.5">Product</th>
+                      <th className="px-5 py-3.5">Code</th>
+                      <th className="px-5 py-3.5">Godown</th>
+                      <th className="px-5 py-3.5">Godown Type</th>
+                      <th className="px-5 py-3.5 text-right">Available Stock</th>
+                      <th className="px-5 py-3.5 text-right">Last Movement</th>
+                      <th className="px-5 py-3.5 text-right">Stock Ledger</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {stockItems.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-5 py-3.5 font-semibold text-slate-900">{item.product?.name}</td>
+                        <td className="px-5 py-3.5 font-mono text-xs text-blue-600">{item.product?.code}</td>
+                        <td className="px-5 py-3.5 text-slate-800">{item.godown?.name}</td>
+                        <td className="px-5 py-3.5">
+                          <Badge variant={item.godown?.type === 'PRIMARY' ? 'primary' : 'retail'}>
+                            {item.godown?.type}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <span className="font-bold text-sm text-emerald-700">
+                            {Number(item.quantity).toLocaleString()}
+                          </span>{' '}
+                          <span className="text-slate-500">{item.product?.unit}</span>
+                        </td>
+                        <td className="px-5 py-3.5 text-right text-slate-500 whitespace-nowrap">
+                          {item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProductLedger(item.product, item.godown)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-md transition cursor-pointer"
+                            title="Inspect Stock Calculation & Date-Wise History"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                            <span>Ledger</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : activeTab === 'godown_transactions' ? (
+            /* TAB 3: GODOWN TRANSACTION */
+            transactions.length === 0 ? (
+              <div className="p-6">
+                <EmptyState title="No godown transactions recorded" description="No godown ledger movements have taken place yet." />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3.5">Transfer</th>
+                      <th className="px-5 py-3.5">Date</th>
+                      <th className="px-5 py-3.5">Movement Type</th>
+                      <th className="px-5 py-3.5">Transfer Route</th>
+                      <th className="px-5 py-3.5">Godown Type Flow</th>
+                      <th className="px-5 py-3.5">Product</th>
+                      <th className="px-5 py-3.5 text-right">Movement Qty</th>
+                      <th className="px-5 py-3.5 text-right">Balance Before &rarr; After</th>
+                      <th className="px-5 py-3.5">Logged By</th>
+                      <th className="px-5 py-3.5">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {transactions.map((tx) => {
+                      const cleanRef = String(tx.reference_number || tx.id).replace(/^#+/, '');
+                      const isIn = tx.type === 'STOCK_ENTRY' || tx.type === 'TRANSFER_IN' || tx.type === 'OPENING_STOCK';
+                      const isOpening = tx.type === 'OPENING_STOCK';
+                      const isEntry = tx.type === 'STOCK_ENTRY';
+
+                      return (
+                        <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
+                            {cleanRef}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
+                            {tx.created_at ? new Date(tx.created_at).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="px-5 py-3.5 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              isOpening
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : isEntry
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : tx.type === 'TRANSFER_IN'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}>
+                              {isIn ? (
+                                <ArrowDownLeft className="w-3 h-3" />
+                              ) : (
+                                <ArrowUpRight className="w-3 h-3" />
+                              )}
+                              {isOpening ? 'OPENING STOCK' : isEntry ? 'STOCK ENTRY' : tx.type}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {isOpening ? (
+                              <div className="flex items-center gap-1.5 font-medium text-purple-900">
+                                <span className="text-purple-500 font-semibold">Baseline Opening &rarr;</span>
+                                <span className="font-bold text-slate-900">{tx.godown?.name || 'Godown'}</span>
+                              </div>
+                            ) : isEntry ? (
+                              <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                                <span className="text-slate-400">Direct Inward &rarr;</span>
+                                <span className="font-semibold text-slate-900">{tx.godown?.name || 'Central Godown'}</span>
+                              </div>
+                            ) : (
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                                  <span className="text-slate-900">{tx.source_godown?.name || tx.godown?.name || 'G1'}</span>
+                                  <span className="text-slate-400">&rarr;</span>
+                                  <span className="text-slate-900">{tx.destination_godown?.name || 'G2'}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  Recorded at: <span className="font-medium text-slate-700">{tx.godown?.name}</span>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {isEntry ? (
+                              <Badge variant={tx.godown?.type === 'PRIMARY' ? 'primary' : 'retail'} size="sm">
+                                {tx.godown?.type || 'PRIMARY'} Godown
+                              </Badge>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <Badge variant={tx.source_godown?.type === 'PRIMARY' ? 'primary' : 'retail'} size="sm">
+                                  {tx.source_godown?.type || 'PRIMARY'}
+                                </Badge>
+                                <span className="text-slate-400 text-xs font-bold">&rarr;</span>
+                                <Badge variant={tx.destination_godown?.type === 'PRIMARY' ? 'primary' : 'retail'} size="sm">
+                                  {tx.destination_godown?.type || 'RETAIL'}
+                                </Badge>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="font-medium text-slate-900">{tx.product?.name}</div>
+                            <div className="font-mono text-[10px] text-blue-600">{tx.product?.code}</div>
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-bold whitespace-nowrap">
+                            <span className={tx.type === 'TRANSFER_OUT' ? 'text-amber-700' : 'text-emerald-700'}>
+                              {tx.type === 'TRANSFER_OUT' ? `-${tx.quantity}` : `+${tx.quantity}`} {tx.product?.unit || 'units'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono text-slate-600 whitespace-nowrap">
+                            {tx.balance_before} &rarr; <span className="font-semibold text-slate-900">{tx.balance_after}</span>
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
+                            {tx.created_by?.name || 'System Admin'}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-500 max-w-xs truncate text-[11px]">
+                            {tx.remarks || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : (
+            /* TAB 4: WORKER TRANSACTION */
+            transactions.length === 0 ? (
+              <div className="p-6">
+                <EmptyState 
+                  title="No worker transactions recorded" 
+                  description="No stock movements (issued to workers, returned, or consumed) have been logged yet." 
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3.5">Transfer</th>
+                      <th className="px-5 py-3.5">Date</th>
+                      <th className="px-5 py-3.5">Movement Type</th>
+                      <th className="px-5 py-3.5">Worker</th>
+                      <th className="px-5 py-3.5">Client & Work Details</th>
+                      <th className="px-5 py-3.5">Product</th>
+                      <th className="px-5 py-3.5 text-right">Quantity</th>
+                      <th className="px-5 py-3.5">Warehouse / Logged By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {transactions.map((tx) => {
+                      const cleanRef = String(tx.reference_number || tx.id).replace(/^#+/, '');
+                      const isIssued = tx.type === 'GODOWN_TO_WORKER';
+                      const isUsed = tx.type === 'WORKER_USAGE';
+                      const isReturned = tx.type === 'WORKER_TO_GODOWN';
+                      const workerName = tx.worker?.name || (tx.remarks?.match(/by\s+([^:]+):/)?.[1]) || 'Assigned Worker';
+
+                      return (
+                        <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
+                            {cleanRef}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
+                            {tx.created_at ? new Date(tx.created_at).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              isIssued
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : isUsed
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : 'bg-purple-50 text-purple-700 border border-purple-200'
+                            }`}>
+                              {isIssued && <ArrowDownLeft className="w-3 h-3" />}
+                              {isUsed && <Hammer className="w-3 h-3" />}
+                              {isReturned && <ArrowUpRight className="w-3 h-3" />}
+                              {isIssued ? 'Stock Issued' : isUsed ? 'Stock Used' : isReturned ? 'Stock Returned' : tx.type}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 font-semibold text-slate-900">
+                            <div className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{workerName}</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5 max-w-xs">
+                            {tx.client ? (
+                              <div>
+                                <div className="font-bold text-slate-800 flex items-center gap-1">
+                                  <Briefcase className="w-3 h-3 text-blue-600" />
+                                  <span>{tx.client.name}</span>
+                                </div>
+                                {tx.work_title && (
+                                  <div className="text-[11px] text-slate-600 font-medium">
+                                    {tx.work_title}
+                                  </div>
+                                )}
+                                {tx.work_location && (
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
+                                    <MapPin className="w-2.5 h-2.5 text-rose-500" />
+                                    <span>{tx.work_location}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 italic">Direct / Internal Work</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 font-medium text-slate-900">{tx.product?.name}</td>
+                          <td className="px-5 py-3.5 text-right font-bold">
+                            <span className={isUsed ? 'text-amber-700' : isIssued ? 'text-blue-700' : 'text-purple-700'}>
+                              {isIssued ? `+${tx.quantity}` : `-${tx.quantity}`}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600">
+                            <div className="font-medium text-slate-800">{tx.godown?.name || 'Retail Godown'}</div>
+                            <div className="text-[11px] text-slate-400">By: {tx.created_by?.name || 'Authorized'}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+
+          {/* Standard Tabs Pagination */}
+          <Pagination
+            currentPage={pagination.current_page}
+            lastPage={pagination.last_page}
+            total={pagination.total}
+            perPage={perPage}
+            onPageChange={(page) => fetchData(page, perPage)}
+            onPerPageChange={(newPerPage) => {
+              setPerPage(newPerPage);
+              fetchData(1, newPerPage);
+            }}
+            perPageOptions={[10, 25, 50, 100]}
+          />
+        </div>
+      )}
 
       {/* Stock Entry Request Modal */}
       <Modal
@@ -1185,6 +1765,322 @@ export default function StockOverview() {
           </form>
         )}
       </Modal>
+
+      {/* ===================================================================== */}
+      {/* CLOSING STOCK DETAILED PRODUCT LEDGER MODAL                           */}
+      {/* ===================================================================== */}
+      {closingLedgerModalOpen && (
+        <Modal
+          isOpen={closingLedgerModalOpen}
+          onClose={() => setClosingLedgerModalOpen(false)}
+          title="Product Closing Stock Ledger & Period Movement Details"
+          size="4xl"
+        >
+          <div className="space-y-5 p-1">
+            {/* Header info */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    {closingLedgerData?.product?.name || selectedClosingProduct?.product_name}
+                  </h3>
+                  <span className="font-mono text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                    {closingLedgerData?.product?.code || selectedClosingProduct?.product_code}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
+                  <span>Unit: <strong className="text-slate-800 uppercase">{closingLedgerData?.product?.unit || selectedClosingProduct?.unit || 'PCS'}</strong></span>
+                  <span>&bull;</span>
+                  <span>Period: <strong className="text-blue-700">{closingLedgerData?.period_info?.formatted_label || closingData.label}</strong></span>
+                  {closingGodownFilter && (
+                    <>
+                      <span>&bull;</span>
+                      <span>Filtered Godown: <strong>{godownOptions.find(g => String(g.id) === String(closingGodownFilter))?.name || 'Selected'}</strong></span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {closingLedgerData?.metrics && (
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">Period Closing Balance</div>
+                  <div className="text-2xl font-black text-blue-700 font-mono">
+                    {Number(closingLedgerData.metrics.closing_stock || 0).toLocaleString()}{' '}
+                    <span className="text-xs font-bold text-slate-500">{closingLedgerData.product?.unit}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4 Calculation KPI Cards for Modal */}
+            {closingLedgerData?.metrics && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl border border-purple-200 bg-purple-50/60">
+                  <div className="text-[11px] font-bold uppercase text-purple-700 tracking-wider">Opening Stock</div>
+                  <div className="text-lg font-black text-purple-950 font-mono mt-0.5">
+                    {Number(closingLedgerData.metrics.opening_stock || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-purple-600">Balance prior to period</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60">
+                  <div className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Inbound Stock (+)</div>
+                  <div className="text-lg font-black text-emerald-950 font-mono mt-0.5">
+                    +{Number(closingLedgerData.metrics.total_inbound || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-emerald-600">Total received in period</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/60">
+                  <div className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Outbound Stock (-)</div>
+                  <div className="text-lg font-black text-rose-950 font-mono mt-0.5">
+                    -{Number(closingLedgerData.metrics.total_outbound || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-rose-600">Total issued in period</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60">
+                  <div className="text-[11px] font-bold uppercase text-blue-700 tracking-wider">Closing Stock (=)</div>
+                  <div className="text-lg font-black text-blue-950 font-mono mt-0.5">
+                    {Number(closingLedgerData.metrics.closing_stock || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-blue-600">Opening + Inbound - Outbound</div>
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Ledger Transactions Table */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Transaction Movement Ledger During Period
+                </h4>
+                <div className="text-[11px] text-slate-400">Strict chronological entry audit</div>
+              </div>
+
+              {closingLedgerLoading ? (
+                <div className="p-8 text-center"><Spinner size="md" /></div>
+              ) : !closingLedgerData?.transactions || closingLedgerData.transactions.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-lg">
+                  No inventory movements recorded for this product during the selected period.
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-100 border-b border-slate-200 uppercase font-semibold text-slate-600 text-[10px] sticky top-0 z-10">
+                      <tr>
+                        <th className="px-3 py-2">Date & Time</th>
+                        <th className="px-3 py-2">Reference</th>
+                        <th className="px-3 py-2">Movement Type</th>
+                        <th className="px-3 py-2 text-right">Inbound (+)</th>
+                        <th className="px-3 py-2 text-right">Outbound (-)</th>
+                        <th className="px-3 py-2 text-right">Running Balance</th>
+                        <th className="px-3 py-2">Warehouse</th>
+                        <th className="px-3 py-2">Logged By & Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {closingLedgerData.transactions.map((tx) => (
+                        <tr key={tx.id} className="hover:bg-slate-50/80">
+                          <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-800">
+                            {tx.date_formatted}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-[11px] font-semibold text-slate-700 whitespace-nowrap">
+                            {tx.reference}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              tx.type === 'OPENING_STOCK'
+                                ? 'bg-purple-100 text-purple-800'
+                                : tx.inbound_qty > 0
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {tx.type.replace(/_/g, ' ')}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-emerald-700 whitespace-nowrap font-mono">
+                            {tx.inbound_qty > 0 ? `+${Number(tx.inbound_qty).toLocaleString()}` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-rose-700 whitespace-nowrap font-mono">
+                            {tx.outbound_qty > 0 ? `-${Number(tx.outbound_qty).toLocaleString()}` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-black text-slate-900 whitespace-nowrap font-mono">
+                            {Number(tx.running_balance).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                            {tx.godown?.name || 'Central Godown'}
+                          </td>
+                          <td className="px-3 py-2 text-slate-500 max-w-xs truncate text-[11px]">
+                            <span className="font-medium text-slate-700">{tx.created_by}:</span> {tx.remarks}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <Button variant="secondary" onClick={() => setClosingLedgerModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Centralized Product Inventory History & Calculation Modal (Available Stock Tab) */}
+      {productLedgerModalOpen && (
+        <Modal
+          isOpen={productLedgerModalOpen}
+          onClose={() => setProductLedgerModalOpen(false)}
+          title="Product Inventory History & Centralized Stock Ledger"
+          size="4xl"
+        >
+          <div className="space-y-5 p-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    {productLedgerData?.product?.name || selectedProductForLedger?.product?.name}
+                  </h3>
+                  <span className="font-mono text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                    {productLedgerData?.product?.code || selectedProductForLedger?.product?.code}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Unit: <strong className="text-slate-700 uppercase">{productLedgerData?.product?.unit || selectedProductForLedger?.product?.unit || 'PCS'}</strong>
+                  {selectedProductForLedger?.godown && (
+                    <span> &bull; Filtered Warehouse: <strong>{selectedProductForLedger.godown.name}</strong></span>
+                  )}
+                </div>
+              </div>
+
+              {productLedgerData && (
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">Closing Balance</div>
+                  <div className="text-2xl font-black text-emerald-700 font-mono">
+                    {Number(productLedgerData.summary?.actual_closing_stock || 0).toLocaleString()}{' '}
+                    <span className="text-xs font-bold text-slate-500">{productLedgerData.product?.unit}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {productLedgerData && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl border border-purple-200 bg-purple-50/60">
+                  <div className="text-[11px] font-bold uppercase text-purple-700 tracking-wider">A. Opening Stock</div>
+                  <div className="text-lg font-black text-purple-900 font-mono mt-0.5">
+                    {Number(productLedgerData.summary?.opening_stock || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-purple-600">Baseline setup quantity</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60">
+                  <div className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">B. Total Inbound (+)</div>
+                  <div className="text-lg font-black text-emerald-900 font-mono mt-0.5">
+                    +{Number(productLedgerData.summary?.total_inbound || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-emerald-600">Procurement & returns</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/60">
+                  <div className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">C. Total Outbound (-)</div>
+                  <div className="text-lg font-black text-rose-900 font-mono mt-0.5">
+                    -{Number(productLedgerData.summary?.total_outbound || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-rose-600">Issued to workers/site</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60">
+                  <div className="text-[11px] font-bold uppercase text-blue-700 tracking-wider">Closing Stock (=)</div>
+                  <div className="text-lg font-black text-blue-900 font-mono mt-0.5">
+                    {Number(productLedgerData.summary?.calculated_closing_stock || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-blue-600">Opening + Inbound - Outbound</div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Date-Wise Inventory Movement & Running Balance
+                </h4>
+                <div className="text-[11px] text-slate-400">Chronological transaction record</div>
+              </div>
+
+              {ledgerLoading ? (
+                <div className="p-8 text-center"><Spinner size="md" /></div>
+              ) : !productLedgerData?.ledger || productLedgerData.ledger.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-lg">
+                  No inventory transactions recorded yet for this product.
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-100 border-b border-slate-200 uppercase font-semibold text-slate-600 text-[10px] sticky top-0 z-10">
+                      <tr>
+                        <th className="px-3 py-2">Date</th>
+                        <th className="px-3 py-2">Transaction Type</th>
+                        <th className="px-3 py-2 text-right">Inbound (+)</th>
+                        <th className="px-3 py-2 text-right">Outbound (-)</th>
+                        <th className="px-3 py-2 text-right">Running Balance</th>
+                        <th className="px-3 py-2">Godown / Location</th>
+                        <th className="px-3 py-2">Logged By & Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {productLedgerData.ledger.map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50/80">
+                          <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-800">
+                            {row.date_formatted}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              row.category === 'OPENING_STOCK'
+                                ? 'bg-purple-100 text-purple-800'
+                                : row.category === 'INBOUND'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {row.type.replace(/_/g, ' ')}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-emerald-700 whitespace-nowrap font-mono">
+                            {row.inbound > 0 ? `+${Number(row.inbound).toLocaleString()}` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-rose-700 whitespace-nowrap font-mono">
+                            {row.outbound > 0 ? `-${Number(row.outbound).toLocaleString()}` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-black text-slate-900 whitespace-nowrap font-mono">
+                            {Number(row.running_balance).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                            {row.godown?.name || 'Warehouse'}
+                          </td>
+                          <td className="px-3 py-2 text-slate-500 max-w-xs truncate">
+                            {row.remarks || 'Stock movement recorded'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <Button variant="secondary" onClick={() => setProductLedgerModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

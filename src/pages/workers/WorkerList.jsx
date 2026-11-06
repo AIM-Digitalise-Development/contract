@@ -33,6 +33,7 @@ export default function WorkerList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
@@ -77,64 +78,46 @@ export default function WorkerList() {
   });
 
   // Fetch Workers and live stock holdings
-  const fetchWorkers = useCallback(async (page = 1) => {
+  const fetchWorkers = useCallback(async (page = 1, currentPerPage = perPage) => {
     setLoading(true);
     setError('');
     try {
       const params = {
         page,
-        per_page: pagination.per_page,
+        per_page: currentPerPage,
         role: 'worker',
       };
-      if (debouncedSearch) params.search = debouncedSearch;
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
+      }
 
-      const [res, stocksRes, reqsRes] = await Promise.allSettled([
+      const [res, stockMap] = await Promise.allSettled([
         employeeService.getEmployees(params),
-        workerStockService.getWorkerStocks({ per_page: 1000 }),
-        workerStockService.getRequests({ type: 'ISSUE', per_page: 500 }),
+        workerStockService.getWorkerStocks({ per_page: 200 }),
       ]);
 
       if (res.status === 'fulfilled') {
         setWorkers(res.value.data?.items || []);
-        setPagination(res.value.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+        setPagination(res.value.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
       } else {
         throw res.reason;
       }
 
-      // Map worker stock holdings
-      const hMap = {};
-      if (stocksRes.status === 'fulfilled') {
-        const stockItems = extractItems(stocksRes.value);
-        stockItems.forEach((st) => {
-          const wId = Number(st.worker_id || st.worker?.id);
-          const qty = parseFloat(st.quantity || st.current_balance || 0);
-          if (wId && qty > 0) {
-            hMap[wId] = (hMap[wId] || 0) + qty;
-          }
+      if (stockMap.status === 'fulfilled') {
+        const stocks = stockMap.value.data?.items || stockMap.value.data || [];
+        const map = {};
+        stocks.forEach((s) => {
+          if (!map[s.worker_id]) map[s.worker_id] = [];
+          map[s.worker_id].push(s);
         });
+        setWorkerStockMap(map);
       }
-      setWorkerHoldingsMap(hMap);
-
-      // Map worker latest active projects
-      const pMap = {};
-      if (reqsRes.status === 'fulfilled') {
-        const reqItems = extractItems(reqsRes.value);
-        reqItems.forEach((r) => {
-          const wId = Number(r.worker_id || r.worker?.id);
-          const s = (r.status || '').toUpperCase();
-          if (wId && s === 'APPROVED' && !pMap[wId]) {
-            const projectTitle = r.client?.name || r.work_title || r.task;
-            if (projectTitle) pMap[wId] = projectTitle;
-          }
-        });
-      }
-      setWorkerProjectsMap(pMap);
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to load workers.'));
+      setError(extractErrorMessage(err, 'Failed to load workers directory.'));
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, pagination.per_page]);
+  }, [debouncedSearch, perPage]);
 
   useEffect(() => {
     fetchWorkers(1);
@@ -549,15 +532,20 @@ export default function WorkerList() {
               </table>
             </div>
 
-            {pagination.last_page > 1 && (
-              <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
-                <Pagination
-                  currentPage={pagination.current_page}
-                  totalPages={pagination.last_page}
-                  onPageChange={(p) => fetchWorkers(p)}
-                />
-              </div>
-            )}
+            <div className="border-t border-slate-100">
+              <Pagination
+                currentPage={pagination.current_page}
+                lastPage={pagination.last_page}
+                total={pagination.total}
+                perPage={perPage}
+                onPageChange={(p) => fetchWorkers(p, perPage)}
+                onPerPageChange={(newPerPage) => {
+                  setPerPage(newPerPage);
+                  fetchWorkers(1, newPerPage);
+                }}
+                perPageOptions={[10, 25, 50, 100]}
+              />
+            </div>
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import productService from '../../services/productService';
 import stockService from '../../services/stockService';
 import transferService from '../../services/transferService';
 import workerStockService from '../../services/workerStockService';
+import openingStockService from '../../services/openingStockService';
 import employeeService from '../../services/employeeService';
 import PageHeader from '../../components/layout/PageHeader';
 import Badge from '../../components/common/Badge';
@@ -16,6 +17,7 @@ import {
   Store,
   Users,
   Layers,
+  FileSpreadsheet,
   Briefcase,
   Clock,
   ArrowRight,
@@ -34,6 +36,9 @@ export default function Dashboard() {
     totalStockUnits: 0,
     totalWorkers: 0,
     totalWorkerStockHoldings: 0,
+    openingStockUnits: 0,
+    isOpeningStockInitialized: false,
+    openingStockRef: '',
     pendingEntries: 0,
     pendingTransfers: 0,
     pendingWorkerAllocations: 0,
@@ -55,6 +60,7 @@ export default function Dashboard() {
           workerRes,
           workerStockRes,
           wsRequestsRes,
+          openingStockRes,
         ] = await Promise.allSettled([
           godownService.getGodowns({ per_page: 100 }),
           productService.getProducts({ per_page: 100 }),
@@ -64,6 +70,7 @@ export default function Dashboard() {
           employeeService.getEmployees({ role: 'worker', per_page: 100 }),
           workerStockService.getWorkerStocks({ per_page: 100 }),
           workerStockService.getRequests({ per_page: 10 }),
+          openingStockService.getStatus(),
         ]);
 
         const godowns = godownsRes.status === 'fulfilled' ? godownsRes.value.data?.items || [] : [];
@@ -84,6 +91,11 @@ export default function Dashboard() {
         const pendingT = transfers.filter((t) => t.status === 'PENDING').length;
         const pendingWS = wsRequests.filter((w) => w.status === 'PENDING').length;
 
+        const osData = openingStockRes?.status === 'fulfilled' ? openingStockRes.value.data || {} : {};
+        const isOSInit = Boolean(osData.is_initialized);
+        const osRecord = osData.import_record || {};
+        const osUnits = Number(osRecord.total_quantity || 0);
+
         setStats({
           primaryGodowns: primaryCount,
           retailGodowns: retailCount,
@@ -91,6 +103,9 @@ export default function Dashboard() {
           totalStockUnits: totalUnits,
           totalWorkers: workers.length,
           totalWorkerStockHoldings: totalWorkerUnits,
+          openingStockUnits: osUnits,
+          isOpeningStockInitialized: isOSInit,
+          openingStockRef: osRecord.import_number || '',
           pendingEntries: pendingE,
           pendingTransfers: pendingT,
           pendingWorkerAllocations: pendingWS,
@@ -204,8 +219,13 @@ export default function Dashboard() {
               {loading ? '...' : stats.totalStockUnits.toLocaleString()}
             </div>
           </div>
-          <div className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+          <div className="text-[11px] text-emerald-700 font-semibold flex items-center justify-between">
             <span>Available in Warehouses</span>
+            {stats.openingStockUnits > 0 && (
+              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-1.5 py-0.5 rounded">
+                {stats.openingStockUnits.toLocaleString()} opening units
+              </span>
+            )}
           </div>
         </div>
 

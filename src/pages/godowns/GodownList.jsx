@@ -28,6 +28,7 @@ export default function GodownList({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -448,10 +449,15 @@ export default function GodownList({ embedded = false }) {
 
         <Pagination
           currentPage={pagination.current_page}
-          totalPages={pagination.last_page}
+          lastPage={pagination.last_page}
           total={pagination.total}
-          perPage={pagination.per_page}
-          onPageChange={fetchGodowns}
+          perPage={perPage}
+          onPageChange={(page) => fetchGodowns(page, perPage)}
+          onPerPageChange={(newPerPage) => {
+            setPerPage(newPerPage);
+            fetchGodowns(1, newPerPage);
+          }}
+          perPageOptions={[10, 25, 50, 100]}
         />
       </div>
 

@@ -43,6 +43,16 @@ export const stockService = {
     return response.data;
   },
 
+  async getClosingStock(params = {}) {
+    const response = await api.get('/stock/closing-stock', { params });
+    return response.data;
+  },
+
+  async getClosingStockProductLedger(productId, params = {}) {
+    const response = await api.get(`/stock/closing-stock/product-ledger/${productId}`, { params });
+    return response.data;
+  },
+
   async deleteStockEntry(id) {
     const response = await api.delete(`/stock-entries/${id}`);
     return response.data;

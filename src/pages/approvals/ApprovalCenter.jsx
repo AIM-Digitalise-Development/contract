@@ -7,6 +7,7 @@ import { extractErrorMessage, extractItems } from '../../services/api';
 import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
+import Pagination from '../../components/common/Pagination';
 import MaterialIssueSlipModal from '../../components/workerStock/MaterialIssueSlipModal';
 import { exportToCSV } from '../../utils/csvExport';
 import { formatIndianPhone } from '../../utils/phoneUtils';
@@ -37,6 +38,12 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
   const [workerRequests, setWorkerRequests] = useState([]);
 
   // Counts for tabs
+  // Tab-specific pagination states
+  const [workerPage, setWorkerPage] = useState(1);
+  const [workerPerPage, setWorkerPerPage] = useState(10);
+  const [transferPage, setTransferPage] = useState(1);
+  const [transferPerPage, setTransferPerPage] = useState(10);
+
   const [pendingCounts, setPendingCounts] = useState({
     transfers: 0,
     worker_stock: 0,
@@ -170,7 +177,9 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
   };
 
   const safeTransfers = Array.isArray(transfers) ? transfers : [];
+  const paginatedTransfers = safeTransfers.slice((transferPage - 1) * transferPerPage, transferPage * transferPerPage);
   const safeWorkerRequests = Array.isArray(workerRequests) ? workerRequests : [];
+  const paginatedWorkerRequests = safeWorkerRequests.slice((workerPage - 1) * workerPerPage, workerPage * workerPerPage);
 
   const isSelfRequest = (item) => {
     const requesterId = item.requested_by?.id || item.created_by_id || item.user_id || item.requester_id;
@@ -325,7 +334,7 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {safeWorkerRequests.map((req) => {
+                  {paginatedWorkerRequests.map((req) => {
                     const self = isSelfRequest(req);
                     const cleanReqId = String(req.request_number || req.id).replace(/^#+/, '');
                     const hasItems = Array.isArray(req.items) && req.items.length > 0;
@@ -441,6 +450,19 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
               </table>
             </div>
           )}
+
+          <Pagination
+            currentPage={workerPage}
+            lastPage={Math.max(1, Math.ceil(safeWorkerRequests.length / workerPerPage))}
+            total={safeWorkerRequests.length}
+            perPage={workerPerPage}
+            onPageChange={(p) => setWorkerPage(p)}
+            onPerPageChange={(newPerPage) => {
+              setWorkerPerPage(newPerPage);
+              setWorkerPage(1);
+            }}
+            perPageOptions={[10, 25, 50, 100]}
+          />
         </div>
       )}
 
@@ -468,7 +490,7 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {safeTransfers.map((tr) => {
+                  {paginatedTransfers.map((tr) => {
                     const self = isSelfRequest(tr);
                     const cleanTransferId = String(tr.transfer_number || tr.id).replace(/^#+/, '');
                     return (

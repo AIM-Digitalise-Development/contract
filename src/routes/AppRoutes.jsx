@@ -18,6 +18,7 @@ import WorkerDetail from '../pages/workers/WorkerDetail';
 import WorkerStockRequests from '../pages/workerStock/WorkerStockRequests';
 import AuditLogList from '../pages/auditLogs/AuditLogList';
 import AuditEntry from '../pages/audit/AuditEntry';
+import OpeningStockManagement from '../pages/openingStock/OpeningStockManagement';
 
 export default function AppRoutes() {
   return (
@@ -49,6 +50,16 @@ export default function AppRoutes() {
         {/* Warehouses & Catalog */}
         <Route path="godowns" element={<GodownList />} />
         <Route path="products" element={<ProductList />} />
+
+        {/* Opening Stock Management (One-Time Setup & Audit Baseline) */}
+        <Route
+          path="opening-stock"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <OpeningStockManagement />
+            </RoleRoute>
+          }
+        />
 
         {/* Inventory & Godown Stock */}
         <Route path="stock" element={<StockOverview />} />

@@ -43,6 +43,7 @@ export default function ProductList({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -80,24 +81,24 @@ export default function ProductList({ embedded = false }) {
   const [productToDelete, setProductToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchProducts = useCallback(async (page = 1) => {
+  const fetchProducts = useCallback(async (page = 1, currentPerPage = perPage) => {
     setLoading(true);
     setError('');
     try {
       const res = await productService.getProducts({
         page,
-        per_page: 10,
+        per_page: currentPerPage,
         search: debouncedSearch || undefined,
         status: statusFilter || undefined,
       });
       setProducts(res.data?.items || []);
-      setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+      setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load products.'));
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, perPage]);
 
   useEffect(() => {
     fetchProducts(1);
@@ -457,10 +458,15 @@ export default function ProductList({ embedded = false }) {
 
         <Pagination
           currentPage={pagination.current_page}
-          totalPages={pagination.last_page}
+          lastPage={pagination.last_page}
           total={pagination.total}
-          perPage={pagination.per_page}
-          onPageChange={fetchProducts}
+          perPage={perPage}
+          onPageChange={(page) => fetchProducts(page, perPage)}
+          onPerPageChange={(newPerPage) => {
+            setPerPage(newPerPage);
+            fetchProducts(1, newPerPage);
+          }}
+          perPageOptions={[10, 25, 50, 100]}
         />
       </div>
 

@@ -29,6 +29,7 @@ export default function EmployeeList({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   // Roles list
   const [roles, setRoles] = useState([]);
@@ -88,26 +89,27 @@ export default function EmployeeList({ embedded = false }) {
   }, []);
 
   // Fetch Employees List
-  const fetchEmployees = useCallback(async (page = 1) => {
+  const fetchEmployees = useCallback(async (page = 1, currentPerPage = perPage) => {
     setLoading(true);
     setError('');
     try {
       const params = {
         page,
-        per_page: 10,
-        search: debouncedSearch || undefined,
-        role: roleFilter || undefined,
-        status: statusFilter || undefined,
+        per_page: currentPerPage,
       };
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (roleFilter) params.role = roleFilter;
+      if (statusFilter !== '') params.is_active = statusFilter;
+
       const res = await employeeService.getEmployees(params);
       setEmployees(res.data?.items || []);
-      setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: 10 });
+      setPagination(res.data?.pagination || { current_page: 1, last_page: 1, total: 0, per_page: currentPerPage });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load employee records.'));
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, roleFilter, statusFilter]);
+  }, [debouncedSearch, roleFilter, statusFilter, perPage]);
 
   useEffect(() => {
     fetchEmployees(1);
@@ -535,10 +537,15 @@ export default function EmployeeList({ embedded = false }) {
 
         <Pagination
           currentPage={pagination.current_page}
-          totalPages={pagination.last_page}
+          lastPage={pagination.last_page}
           total={pagination.total}
-          perPage={pagination.per_page}
-          onPageChange={fetchEmployees}
+          perPage={perPage}
+          onPageChange={(page) => fetchEmployees(page, perPage)}
+          onPerPageChange={(newPerPage) => {
+            setPerPage(newPerPage);
+            fetchEmployees(1, newPerPage);
+          }}
+          perPageOptions={[10, 25, 50, 100]}
         />
       </div>
 

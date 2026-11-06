@@ -7,6 +7,7 @@ import { extractItems } from '../../services/api';
 import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
+import Pagination from '../../components/common/Pagination';
 import { exportToCSV } from '../../utils/csvExport';
 import { Download } from 'lucide-react';
 import {
@@ -33,17 +34,30 @@ export default function AuditLogList() {
   const [selectedLog, setSelectedLog] = useState(null);
 
   const debouncedSearch = useDebounce(search, 300);
+  const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (page = 1, currentPerPage = perPage) => {
     setLoading(true);
     try {
-      const params = {};
+      const params = {
+        page,
+        per_page: currentPerPage,
+      };
       if (actionFilter) params.action = actionFilter;
       if (entityFilter) params.entity_type = entityFilter;
       if (debouncedSearch) params.search = debouncedSearch;
 
       const res = await auditService.getAuditLogs(params);
-      setLogs(extractItems(res));
+      const items = res.data?.items || extractItems(res) || [];
+      const pg = res.data?.pagination || {
+        current_page: page,
+        last_page: Math.max(1, Math.ceil(items.length / currentPerPage)),
+        total: items.length,
+        per_page: currentPerPage,
+      };
+      setLogs(items);
+      setPagination(pg);
     } catch (err) {
       console.error('Failed to load audit logs:', err);
       toast.error('Failed to load audit logs.');
@@ -51,11 +65,11 @@ export default function AuditLogList() {
     } finally {
       setLoading(false);
     }
-  }, [actionFilter, entityFilter, debouncedSearch]);
+  }, [actionFilter, entityFilter, debouncedSearch, perPage]);
 
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    fetchLogs(1, perPage);
+  }, [actionFilter, entityFilter, debouncedSearch]);
 
   const safeLogs = Array.isArray(logs) ? logs : [];
 
@@ -237,6 +251,19 @@ export default function AuditLogList() {
             </table>
           </div>
         )}
+
+        <Pagination
+          currentPage={pagination.current_page}
+          lastPage={pagination.last_page}
+          total={pagination.total}
+          perPage={perPage}
+          onPageChange={(page) => fetchLogs(page, perPage)}
+          onPerPageChange={(newPerPage) => {
+            setPerPage(newPerPage);
+            fetchLogs(1, newPerPage);
+          }}
+          perPageOptions={[10, 25, 50, 100]}
+        />
       </div>
 
       {/* Diff / Detail Modal */}

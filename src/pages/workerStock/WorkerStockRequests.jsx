@@ -12,6 +12,7 @@ import { extractErrorMessage, extractItems } from '../../services/api';
 import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
+import Pagination from '../../components/common/Pagination';
 import MaterialIssueSlipModal from '../../components/workerStock/MaterialIssueSlipModal';
 import { exportToCSV } from '../../utils/csvExport';
 import { Printer, Plus, Trash2, PenTool, ShieldCheck, Building, Calendar, MapPin, Download } from 'lucide-react';
@@ -40,6 +41,8 @@ export default function WorkerStockRequests() {
   const [typeFilter, setTypeFilter] = useState('');
 
   const debouncedSearch = useDebounce(search, 300);
+  const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
+  const [perPage, setPerPage] = useState(10);
 
   // Reference data
   const [workers, setWorkers] = useState([]);
@@ -137,16 +140,27 @@ export default function WorkerStockRequests() {
   }, []);
 
   // Fetch Requests
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (page = 1, currentPerPage = perPage) => {
     setLoading(true);
     try {
-      const params = {};
+      const params = {
+        page,
+        per_page: currentPerPage,
+      };
       if (statusFilter) params.status = statusFilter;
       if (typeFilter) params.request_type = typeFilter;
       if (debouncedSearch) params.search = debouncedSearch;
 
       const res = await workerStockService.getRequests(params);
-      setRequests(extractItems(res));
+      const items = res.data?.items || extractItems(res) || [];
+      const pg = res.data?.pagination || {
+        current_page: page,
+        last_page: Math.max(1, Math.ceil(items.length / currentPerPage)),
+        total: items.length,
+        per_page: currentPerPage,
+      };
+      setRequests(items);
+      setPagination(pg);
     } catch (err) {
       console.error('Failed to load requests:', err);
       toast.error('Failed to load worker stock requests.');
@@ -154,11 +168,11 @@ export default function WorkerStockRequests() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, typeFilter, debouncedSearch]);
+  }, [statusFilter, typeFilter, debouncedSearch, perPage]);
 
   useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
+    fetchRequests(1, perPage);
+  }, [statusFilter, typeFilter, debouncedSearch]);
 
   // When worker is selected in return form, fetch their current holdings
   const handleReturnWorkerChange = async (workerId) => {
