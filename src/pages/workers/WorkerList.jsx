@@ -91,9 +91,10 @@ export default function WorkerList() {
         params.search = debouncedSearch;
       }
 
-      const [res, stockMap] = await Promise.allSettled([
+      const [res, stocksRes, reqsRes] = await Promise.allSettled([
         employeeService.getEmployees(params),
-        workerStockService.getWorkerStocks({ per_page: 200 }),
+        workerStockService.getWorkerStocks({ per_page: 1000 }),
+        workerStockService.getRequests({ type: 'ISSUE', per_page: 500 }),
       ]);
 
       if (res.status === 'fulfilled') {
@@ -103,15 +104,32 @@ export default function WorkerList() {
         throw res.reason;
       }
 
-      if (stockMap.status === 'fulfilled') {
-        const stocks = stockMap.value.data?.items || stockMap.value.data || [];
-        const map = {};
-        stocks.forEach((s) => {
-          if (!map[s.worker_id]) map[s.worker_id] = [];
-          map[s.worker_id].push(s);
+      // Map worker stock holdings
+      const hMap = {};
+      if (stocksRes.status === 'fulfilled') {
+        const stockItems = extractItems(stocksRes.value);
+        stockItems.forEach((st) => {
+          const wId = Number(st.worker_id || st.worker?.id);
+          const qty = parseFloat(st.quantity || st.current_balance || 0);
+          if (wId) {
+            hMap[wId] = (hMap[wId] || 0) + qty;
+          }
         });
-        setWorkerStockMap(map);
       }
+      setWorkerHoldingsMap(hMap);
+
+      // Map worker active projects
+      const pMap = {};
+      if (reqsRes.status === 'fulfilled') {
+        const reqItems = extractItems(reqsRes.value);
+        reqItems.forEach((rq) => {
+          const wId = Number(rq.worker_id || rq.worker?.id);
+          if (wId && rq.client) {
+            pMap[wId] = rq.client.name;
+          }
+        });
+      }
+      setWorkerProjectsMap(pMap);
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load workers directory.'));
     } finally {
