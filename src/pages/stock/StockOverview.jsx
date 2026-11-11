@@ -142,6 +142,7 @@ export default function StockOverview() {
   const [submittingEntry, setSubmittingEntry] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [entryFormData, setEntryFormData] = useState({
+    entry_date: new Date().toISOString().split('T')[0],
     godown_id: '',
     product_id: '',
     quantity: '',
@@ -435,6 +436,7 @@ export default function StockOverview() {
 
   const handleOpenEntryModal = () => {
     setEntryFormData({
+      entry_date: new Date().toISOString().split('T')[0],
       godown_id: godownOptions[0]?.id || '',
       product_id: productOptions[0]?.id || '',
       quantity: '',
@@ -457,6 +459,9 @@ export default function StockOverview() {
     setSubmittingEntry(true);
     try {
       const formData = new FormData();
+      if (entryFormData.entry_date) {
+        formData.append('entry_date', entryFormData.entry_date);
+      }
       formData.append('godown_id', entryFormData.godown_id);
       formData.append('product_id', entryFormData.product_id);
       formData.append('quantity', entryFormData.quantity);
@@ -569,7 +574,7 @@ export default function StockOverview() {
           filename: `Stock_List_Approval_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
             { label: 'Entry ID', format: (e) => String(e.entry_number || e.id).replace(/^#+/, '') },
-            { label: 'Date', format: (e) => (e.created_at ? new Date(e.created_at).toLocaleDateString() : '—') },
+            { label: 'Date', format: (e) => e.entry_date_formatted || (e.entry_date ? new Date(e.entry_date).toLocaleDateString() : (e.created_at ? new Date(e.created_at).toLocaleDateString() : '—')) },
             { label: 'Product', format: (e) => e.product?.name || 'Product' },
             { label: 'Godown', format: (e) => e.godown?.name || 'Godown' },
             { label: 'Location', format: (e) => e.internal_location || '—' },
@@ -1254,7 +1259,14 @@ export default function StockOverview() {
                             {cleanEntryId}
                           </td>
                           <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                            {entry.created_at ? new Date(entry.created_at).toLocaleDateString() : '—'}
+                            <div className="font-medium text-slate-900">
+                              {entry.entry_date_formatted || (entry.entry_date ? new Date(entry.entry_date).toLocaleDateString() : (entry.created_at ? new Date(entry.created_at).toLocaleDateString() : '—'))}
+                            </div>
+                            {entry.entry_date && entry.created_at && entry.entry_date !== entry.created_at.slice(0, 10) && (
+                              <span className="text-[10px] text-amber-600 font-semibold block">
+                                (Backdated)
+                              </span>
+                            )}
                           </td>
                           <td className="px-5 py-3.5 font-medium text-slate-900">{entry.product?.name}</td>
                           <td className="px-5 py-3.5 text-slate-800">{entry.godown?.name}</td>
@@ -1713,6 +1725,15 @@ export default function StockOverview() {
         title="Create Stock Entry Request"
       >
         <form onSubmit={handleSubmitEntry} className="space-y-4">
+          <Input
+            label="Procurement Date *"
+            type="date"
+            value={entryFormData.entry_date}
+            onChange={(e) => setEntryFormData({ ...entryFormData, entry_date: e.target.value })}
+            required
+            helperText="Specify the actual date when stock was procured (backdating supported)"
+          />
+
           <Select
             label="Target Godown *"
             value={entryFormData.godown_id}
@@ -1799,6 +1820,15 @@ export default function StockOverview() {
                 <span className="text-emerald-800">Entry Reference:</span>
                 <span className="font-mono font-bold text-emerald-950">
                   {String(selectedEntryToApprove.entry_number || selectedEntryToApprove.id).replace(/^#+/, '')}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-emerald-100">
+                <span className="text-emerald-800">Procurement Date:</span>
+                <span className="font-semibold text-emerald-950">
+                  {selectedEntryToApprove.entry_date_formatted || (selectedEntryToApprove.entry_date ? new Date(selectedEntryToApprove.entry_date).toLocaleDateString() : (selectedEntryToApprove.created_at ? new Date(selectedEntryToApprove.created_at).toLocaleDateString() : '—'))}
+                  {selectedEntryToApprove.entry_date && selectedEntryToApprove.created_at && selectedEntryToApprove.entry_date !== selectedEntryToApprove.created_at.slice(0, 10) && (
+                    <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded font-medium">Backdated</span>
+                  )}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-emerald-100">
