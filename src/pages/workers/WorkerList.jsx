@@ -561,7 +561,7 @@ export default function WorkerList() {
                   setPerPage(newPerPage);
                   fetchWorkers(1, newPerPage);
                 }}
-                perPageOptions={[10, 25, 50, 100]}
+                perPageOptions={[10, 25, 50, 100, 'All']}
               />
             </div>
           </>

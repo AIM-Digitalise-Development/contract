@@ -1198,7 +1198,7 @@ export default function StockOverview() {
                 setClosingPage(1);
                 fetchClosingStock(1, newPerPage);
               }}
-              perPageOptions={[10, 25, 50, 100]}
+              perPageOptions={[10, 25, 50, 100, 'All']}
             />
           </div>
         </div>
@@ -1701,7 +1701,7 @@ export default function StockOverview() {
               setPerPage(newPerPage);
               fetchData(1, newPerPage);
             }}
-            perPageOptions={[10, 25, 50, 100]}
+            perPageOptions={[10, 25, 50, 100, 'All']}
           />
         </div>
       )}

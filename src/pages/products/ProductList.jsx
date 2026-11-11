@@ -466,7 +466,7 @@ export default function ProductList({ embedded = false }) {
             setPerPage(newPerPage);
             fetchProducts(1, newPerPage);
           }}
-          perPageOptions={[10, 25, 50, 100]}
+          perPageOptions={[10, 25, 50, 100, 'All']}
         />
       </div>
 

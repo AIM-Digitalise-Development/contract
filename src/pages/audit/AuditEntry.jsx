@@ -824,7 +824,14 @@ export default function AuditEntry() {
                 <Pagination
                   currentPage={invPagination.current_page}
                   totalPages={invPagination.last_page}
+                  total={invPagination.total}
+                  perPage={invPerPage}
                   onPageChange={(p) => setInvPage(p)}
+                  onPerPageChange={(newPerPage) => {
+                    setInvPerPage(newPerPage);
+                    fetchInventoryTransactions(1, newPerPage);
+                  }}
+                  perPageOptions={[10, 25, 50, 100, 'All']}
                 />
               </div>
             )}
@@ -1023,7 +1030,14 @@ export default function AuditEntry() {
                 <Pagination
                   currentPage={pagination.current_page}
                   totalPages={pagination.last_page}
-                  onPageChange={(p) => fetchAuditRecords(p)}
+                  total={pagination.total}
+                  perPage={perPage}
+                  onPageChange={(p) => fetchAuditRecords(p, perPage)}
+                  onPerPageChange={(newPerPage) => {
+                    setPerPage(newPerPage);
+                    fetchAuditRecords(1, newPerPage);
+                  }}
+                  perPageOptions={[10, 25, 50, 100, 'All']}
                 />
               </div>
             )}

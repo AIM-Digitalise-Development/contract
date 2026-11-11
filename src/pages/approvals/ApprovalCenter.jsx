@@ -461,7 +461,7 @@ export default function ApprovalCenter({ initialTab = 'worker_stock' }) {
               setWorkerPerPage(newPerPage);
               setWorkerPage(1);
             }}
-            perPageOptions={[10, 25, 50, 100]}
+            perPageOptions={[10, 25, 50, 100, 'All']}
           />
         </div>
       )}

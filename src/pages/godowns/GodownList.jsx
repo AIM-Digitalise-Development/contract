@@ -457,7 +457,7 @@ export default function GodownList({ embedded = false }) {
             setPerPage(newPerPage);
             fetchGodowns(1, newPerPage);
           }}
-          perPageOptions={[10, 25, 50, 100]}
+          perPageOptions={[10, 25, 50, 100, 'All']}
         />
       </div>
 

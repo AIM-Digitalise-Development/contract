@@ -498,7 +498,7 @@ export default function ClientList({ embedded = false }) {
                 setPerPage(newPerPage);
                 fetchClients(1, newPerPage);
               }}
-              perPageOptions={[10, 25, 50, 100]}
+              perPageOptions={[10, 25, 50, 100, 'All']}
             />
           </div>
         )}
