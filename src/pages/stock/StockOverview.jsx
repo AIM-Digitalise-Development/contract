@@ -39,6 +39,10 @@ import {
   TrendingDown,
   TrendingUp,
   RefreshCw,
+  Eye,
+  EyeOff,
+  Image as ImageIcon,
+  ExternalLink,
 } from 'lucide-react';
 import { exportToCSV } from '../../utils/csvExport';
 
@@ -118,6 +122,13 @@ export default function StockOverview() {
   const [approveRemarks, setApproveRemarks] = useState('');
 
   // Reject Modal for pending entries
+  // Image Upload & View states for Stock Procurement
+  const [selectedImageFile, setSelectedImageFile] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [isViewImageModalOpen, setIsViewImageModalOpen] = useState(false);
+  const [viewingImageEntry, setViewingImageEntry] = useState(null);
+
+  const [closingCategoryFilter, setClosingCategoryFilter] = useState('');
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [selectedEntryToReject, setSelectedEntryToReject] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -142,6 +153,14 @@ export default function StockOverview() {
   const [productLedgerModalOpen, setProductLedgerModalOpen] = useState(false);
   const [productLedgerData, setProductLedgerData] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set();
+    (productOptions || []).forEach(p => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set).sort();
+  }, [productOptions]);
 
   const optionsLoadedRef = useRef(false);
 
@@ -229,6 +248,7 @@ export default function StockOverview() {
         page,
         per_page: currentPerPage,
         godown_id: closingGodownFilter || undefined,
+        category: closingCategoryFilter || undefined,
         search: debouncedClosingSearch || undefined,
         sort_by: closingSortBy,
         sort_order: closingSortOrder,
@@ -378,6 +398,27 @@ export default function StockOverview() {
     }
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      toast.error('Invalid image format. Supported formats: JPG, JPEG, PNG, WEBP.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size exceeds 5MB limit. Please upload a smaller image.');
+      e.target.value = '';
+      return;
+    }
+
+    setSelectedImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+  };
+
   const handleOpenEntryModal = () => {
     setEntryFormData({
       godown_id: godownOptions[0]?.id || '',
@@ -386,6 +427,8 @@ export default function StockOverview() {
       internal_location: '',
       remarks: '',
     });
+    setSelectedImageFile(null);
+    setImagePreviewUrl(null);
     setIsEntryModalOpen(true);
   };
 
@@ -398,16 +441,26 @@ export default function StockOverview() {
 
     setSubmittingEntry(true);
     try {
-      await stockService.createStockEntry({
-        godown_id: Number(entryFormData.godown_id),
-        product_id: Number(entryFormData.product_id),
-        quantity: Number(entryFormData.quantity),
-        internal_location: entryFormData.internal_location || undefined,
-        remarks: entryFormData.remarks || undefined,
-      });
+      const formData = new FormData();
+      formData.append('godown_id', entryFormData.godown_id);
+      formData.append('product_id', entryFormData.product_id);
+      formData.append('quantity', entryFormData.quantity);
+      if (entryFormData.internal_location) {
+        formData.append('internal_location', entryFormData.internal_location.trim());
+      }
+      if (entryFormData.remarks) {
+        formData.append('remarks', entryFormData.remarks.trim());
+      }
+      if (selectedImageFile) {
+        formData.append('image', selectedImageFile);
+      }
+
+      await stockService.createStockEntry(formData);
 
       toast.success('Stock entry submitted and awaiting supervisor approval.');
       setIsEntryModalOpen(false);
+      setSelectedImageFile(null);
+      setImagePreviewUrl(null);
       setActiveTab('entries');
       fetchData(1, perPage);
     } catch (err) {
@@ -427,6 +480,7 @@ export default function StockOverview() {
             period: closingPeriod,
             per_page: 2000,
             godown_id: closingGodownFilter || undefined,
+            category: closingCategoryFilter || undefined,
             search: debouncedClosingSearch || undefined,
             sort_by: closingSortBy,
             sort_order: closingSortOrder,
@@ -451,14 +505,17 @@ export default function StockOverview() {
         exportToCSV({
           filename: `Closing_Stock_${closingPeriod}_${new Date().toISOString().slice(0, 10)}.csv`,
           columns: [
-            { label: 'Product Code', key: 'product_code' },
+            { label: 'Product SKU', key: 'product_code' },
             { label: 'Product Name', key: 'product_name' },
+            { label: 'Category', key: 'category' },
             { label: 'Unit', key: 'unit' },
-            { label: 'Opening Qty', key: 'opening_qty' },
-            { label: 'Inbound Qty', key: 'inbound_qty' },
-            { label: 'Outbound Qty', key: 'outbound_qty' },
-            { label: 'Closing Qty', key: 'closing_qty' },
-            { label: 'Min Alert Qty', key: 'min_stock_alert' },
+            { label: 'Opening Stock', key: 'opening_qty' },
+            { label: 'Total Stock In', key: 'inbound_qty' },
+            { label: 'Total Stock Out', key: 'outbound_qty' },
+            { label: 'Adjustments', key: 'adjustments_qty' },
+            { label: 'Closing Stock', key: 'closing_qty' },
+            { label: 'Last Transaction Date', key: 'last_transaction_formatted' },
+            { label: 'Reporting Date', format: () => closingData.label || 'Today' },
             { 
               label: 'Stock Status', 
               format: (item) => {
@@ -792,14 +849,26 @@ export default function StockOverview() {
             </div>
 
             {/* Custom Range & Filter Selectors */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
               <Input
-                placeholder="Search product code or name..."
+                placeholder="Search SKU or name..."
                 value={closingSearch}
                 onChange={(e) => {
                   setClosingSearch(e.target.value);
                   setClosingPage(1);
                 }}
+              />
+              <Select
+                value={closingCategoryFilter}
+                onChange={(e) => {
+                  setClosingCategoryFilter(e.target.value);
+                  setClosingPage(1);
+                }}
+                placeholder="All Categories"
+                options={[
+                  { value: '', label: 'All Categories' },
+                  ...categoryOptions.map(c => ({ value: c, label: c }))
+                ]}
               />
               <Select
                 value={closingGodownFilter}
@@ -985,17 +1054,20 @@ export default function StockOverview() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider text-[11px]">
                     <tr>
-                      <th className="px-5 py-3.5">Product Code</th>
-                      <th className="px-5 py-3.5">Product Name</th>
-                      <th className="px-5 py-3.5">Unit</th>
-                      <th className="px-5 py-3.5 text-right">Opening Qty</th>
-                      <th className="px-5 py-3.5 text-right">Inbound (+)</th>
-                      <th className="px-5 py-3.5 text-right">Outbound (-)</th>
-                      <th className="px-5 py-3.5 text-right">Closing Qty</th>
-                      <th className="px-5 py-3.5 text-center">Status</th>
-                      <th className="px-5 py-3.5 text-right">Action</th>
+                      <th className="px-4 py-3.5">Product SKU</th>
+                      <th className="px-4 py-3.5">Product Name</th>
+                      <th className="px-4 py-3.5">Category</th>
+                      <th className="px-3 py-3.5">Unit</th>
+                      <th className="px-4 py-3.5 text-right">Opening Stock</th>
+                      <th className="px-4 py-3.5 text-right">Total Stock In</th>
+                      <th className="px-4 py-3.5 text-right">Total Stock Out</th>
+                      <th className="px-4 py-3.5 text-right">Adjustments</th>
+                      <th className="px-4 py-3.5 text-right">Closing Stock</th>
+                      <th className="px-4 py-3.5">Last Transaction Date</th>
+                      <th className="px-3 py-3.5 text-center">Status</th>
+                      <th className="px-4 py-3.5 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1005,19 +1077,24 @@ export default function StockOverview() {
 
                       return (
                         <tr key={item.product_id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-blue-600">
+                          <td className="px-4 py-3.5 font-mono text-xs font-semibold text-blue-600">
                             {item.product_code}
                           </td>
-                          <td className="px-5 py-3.5 font-semibold text-slate-900">
+                          <td className="px-4 py-3.5 font-semibold text-slate-900">
                             {item.product_name}
                           </td>
-                          <td className="px-5 py-3.5 text-slate-600 uppercase font-medium">
+                          <td className="px-4 py-3.5 text-slate-600 font-medium">
+                            <span className="inline-block px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700">
+                              {item.category || 'General'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3.5 text-slate-600 uppercase font-medium">
                             {item.unit}
                           </td>
-                          <td className="px-5 py-3.5 text-right font-mono font-medium text-purple-900">
+                          <td className="px-4 py-3.5 text-right font-mono font-medium text-purple-900">
                             {Number(item.opening_qty).toLocaleString()}
                           </td>
-                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
                             {item.inbound_qty > 0 ? (
                               <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
                                 +{Number(item.inbound_qty).toLocaleString()}
@@ -1026,7 +1103,7 @@ export default function StockOverview() {
                               <span className="text-slate-400 font-mono">0</span>
                             )}
                           </td>
-                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
                             {item.outbound_qty > 0 ? (
                               <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 font-mono">
                                 -{Number(item.outbound_qty).toLocaleString()}
@@ -1035,13 +1112,27 @@ export default function StockOverview() {
                               <span className="text-slate-400 font-mono">0</span>
                             )}
                           </td>
-                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                            {item.adjustments_qty !== 0 ? (
+                              <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
+                                item.adjustments_qty > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}>
+                                {item.adjustments_qty > 0 ? `+${Number(item.adjustments_qty).toLocaleString()}` : Number(item.adjustments_qty).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono">0</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
                             <span className={`text-sm font-black font-mono ${
                               isZero ? 'text-slate-400' : isLow ? 'text-rose-700' : 'text-blue-700'
                             }`}>
                               {Number(item.closing_qty).toLocaleString()}
                             </span>{' '}
                             <span className="text-[10px] text-slate-400 uppercase">{item.unit}</span>
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-500 whitespace-nowrap font-mono text-[11px]">
+                            {item.last_transaction_formatted || '—'}
                           </td>
                           <td className="px-5 py-3.5 text-center whitespace-nowrap">
                             {isZero ? (
@@ -1199,6 +1290,30 @@ export default function StockOverview() {
                           <td className="px-5 py-3.5 text-right whitespace-nowrap">
                             {entry.status === 'PENDING' ? (
                               <div className="flex items-center justify-end gap-1.5">
+                                {entry.image_url ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setViewingImageEntry(entry);
+                                      setIsViewImageModalOpen(true);
+                                    }}
+                                    title="View attached image"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>View</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    title="No image available"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200 rounded-md opacity-60 cursor-not-allowed"
+                                  >
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                    <span>No Image</span>
+                                  </button>
+                                )}
                                 <Button
                                   size="sm"
                                   variant="success"
@@ -1229,6 +1344,30 @@ export default function StockOverview() {
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1.5">
+                                {entry.image_url ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setViewingImageEntry(entry);
+                                      setIsViewImageModalOpen(true);
+                                    }}
+                                    title="View attached image"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>View</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    title="No image available"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200 rounded-md opacity-60 cursor-not-allowed"
+                                  >
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                    <span>No Image</span>
+                                  </button>
+                                )}
                                 {isAdmin && (
                                   <button
                                     type="button"
@@ -1240,7 +1379,6 @@ export default function StockOverview() {
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 )}
-                                {!isAdmin && <span className="text-xs text-slate-400">—</span>}
                               </div>
                             )}
                           </td>
@@ -2081,6 +2219,72 @@ export default function StockOverview() {
           </div>
         </Modal>
       )}
+
+      {/* View Procurement Image Modal */}
+      <Modal
+        isOpen={isViewImageModalOpen}
+        onClose={() => {
+          setIsViewImageModalOpen(false);
+          setViewingImageEntry(null);
+        }}
+        title={`Procurement Document: ${viewingImageEntry?.entry_number || ''}`}
+      >
+        <div className="space-y-4">
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 grid grid-cols-2 gap-2">
+            <div>
+              <span className="font-semibold text-slate-500">Product:</span> {viewingImageEntry?.product?.name || '—'}
+            </div>
+            <div>
+              <span className="font-semibold text-slate-500">Quantity:</span> {viewingImageEntry?.quantity} {viewingImageEntry?.product?.unit || 'PCS'}
+            </div>
+            <div>
+              <span className="font-semibold text-slate-500">Godown:</span> {viewingImageEntry?.godown?.name || '—'}
+            </div>
+            <div>
+              <span className="font-semibold text-slate-500">Requester:</span> {viewingImageEntry?.requester?.name || 'Staff'}
+            </div>
+          </div>
+
+          <div className="flex justify-center bg-slate-900/5 rounded-xl p-2 border border-slate-200 overflow-hidden min-h-[220px] items-center">
+            {viewingImageEntry?.image_url ? (
+              <img
+                src={viewingImageEntry.image_url}
+                alt="Procurement Document"
+                className="max-h-[65vh] w-auto object-contain rounded shadow-xs"
+              />
+            ) : (
+              <div className="text-center p-8 text-slate-400">
+                <ImageIcon className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="text-sm font-semibold text-slate-600">No image available</p>
+                <p className="text-xs">No receipt or picture was attached to this procurement entry.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            {viewingImageEntry?.image_url ? (
+              <a
+                href={viewingImageEntry.image_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center text-xs font-semibold text-blue-600 hover:text-blue-800"
+              >
+                <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                Open original in new tab
+              </a>
+            ) : <span />}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setIsViewImageModalOpen(false);
+                setViewingImageEntry(null);
+              }}
+            >
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

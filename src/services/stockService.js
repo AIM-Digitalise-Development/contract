@@ -27,7 +27,24 @@ export const stockService = {
   },
 
   async createStockEntry(data) {
-    const response = await api.post('/stock-entries', data);
+    const isFormData = data instanceof FormData;
+    const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
+    const response = await api.post('/stock-entries', data, config);
+    return response.data;
+  },
+
+  async updateStockEntry(id, data) {
+    const isFormData = data instanceof FormData;
+    // For PHP multipart with PUT, sending _method=PUT or POST with _method=PUT is standard
+    let payload = data;
+    let config = {};
+    if (isFormData) {
+      data.append('_method', 'PUT');
+      config = { headers: { 'Content-Type': 'multipart/form-data' } };
+      const response = await api.post(`/stock-entries/${id}`, data, config);
+      return response.data;
+    }
+    const response = await api.put(`/stock-entries/${id}`, data);
     return response.data;
   },
 
@@ -50,6 +67,11 @@ export const stockService = {
 
   async getClosingStockProductLedger(productId, params = {}) {
     const response = await api.get(`/stock/closing-stock/product-ledger/${productId}`, { params });
+    return response.data;
+  },
+
+  async getAuditTransactions(params = {}) {
+    const response = await api.get('/stock/audit-transactions', { params });
     return response.data;
   },
 
