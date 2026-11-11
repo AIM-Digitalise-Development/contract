@@ -11,6 +11,7 @@ import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
+import SearchableProductSelect from '../../components/common/SearchableProductSelect';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import Spinner from '../../components/common/Spinner';
@@ -173,7 +174,7 @@ export default function StockOverview() {
       try {
         const [gRes, pRes] = await Promise.all([
           godownService.getGodowns({ per_page: 100 }),
-          productService.getProducts({ per_page: 100 }),
+          productService.getProducts({ per_page: 500 }),
         ]);
         setGodownOptions(gRes.data?.items || []);
         setProductOptions(pRes.data?.items || []);
@@ -793,11 +794,11 @@ export default function StockOverview() {
             placeholder="All Godowns"
             options={godownOptions.map((g) => ({ value: g.id, label: `${g.name} (${g.type})` }))}
           />
-          <Select
+          <SearchableProductSelect
+            products={productOptions}
             value={productFilter}
-            onChange={(e) => setProductFilter(e.target.value)}
-            placeholder="All Products"
-            options={productOptions.map((p) => ({ value: p.id, label: `${p.name} (${p.code})` }))}
+            onChange={(selectedId) => setProductFilter(selectedId)}
+            placeholder="All Products (Search SKU / Name)"
           />
           {activeTab === 'entries' && (
             <Select
@@ -1723,76 +1724,14 @@ export default function StockOverview() {
             required
           />
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700">
-                Product SKU <span className="text-rose-500">*</span>
-              </label>
-              {entryProductSearch && (
-                <span className="text-[11px] font-medium text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                  {filteredEntryProducts.length} matching product{filteredEntryProducts.length !== 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-
-            {/* Instant Search Bar */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Search className="w-4 h-4" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search SKU code or name (e.g. LB4, BLD, ADAPTOR)..."
-                value={entryProductSearch}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setEntryProductSearch(val);
-                  const term = val.toLowerCase().trim();
-                  if (term) {
-                    const matches = productOptions.filter(
-                      (p) =>
-                        (p.code && p.code.toLowerCase().includes(term)) ||
-                        (p.name && p.name.toLowerCase().includes(term)) ||
-                        (p.category && p.category.toLowerCase().includes(term))
-                    );
-                    if (matches.length > 0 && !matches.some((m) => m.id === entryFormData.product_id)) {
-                      setEntryFormData((prev) => ({ ...prev, product_id: matches[0].id }));
-                    }
-                  }
-                }}
-                className="w-full pl-9 pr-8 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-slate-50/60 hover:bg-white focus:bg-white transition-all"
-              />
-              {entryProductSearch && (
-                <button
-                  type="button"
-                  onClick={() => setEntryProductSearch('')}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-xs font-bold"
-                  title="Clear search"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <Select
-              value={entryFormData.product_id}
-              onChange={(e) => setEntryFormData({ ...entryFormData, product_id: e.target.value })}
-              options={
-                filteredEntryProducts.length > 0
-                  ? filteredEntryProducts.map((p) => ({
-                      value: p.id,
-                      label: `${p.name} [${p.code}] - (${p.unit})`,
-                    }))
-                  : [{ value: '', label: 'No products match search' }]
-              }
-              required
-            />
-            {filteredEntryProducts.length === 0 && (
-              <p className="text-[11px] text-rose-500 font-medium">
-                No products found matching "{entryProductSearch}". Clear search above to view all {productOptions.length} products.
-              </p>
-            )}
-          </div>
+          <SearchableProductSelect
+            label="Product SKU"
+            products={productOptions}
+            value={entryFormData.product_id}
+            onChange={(selectedId) => setEntryFormData({ ...entryFormData, product_id: selectedId })}
+            required
+            placeholder="Type 's' or SKU code to filter products dynamically..."
+          />
 
           <Input
             label="Received Quantity *"

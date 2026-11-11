@@ -12,6 +12,7 @@ import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
+import SearchableProductSelect from '../../components/common/SearchableProductSelect';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import Spinner from '../../components/common/Spinner';
@@ -87,6 +88,8 @@ export default function AuditEntry() {
   const [invCategoryFilter, setInvCategoryFilter] = useState('');
   const [invTypeFilter, setInvTypeFilter] = useState('');
   const [invStatusFilter, setInvStatusFilter] = useState('');
+  const [invFromParty, setInvFromParty] = useState('');
+  const [invToParty, setInvToParty] = useState('');
   const [invGodownFilter, setInvGodownFilter] = useState('');
 
   // Single Product Lifecycle Audit Ledger Modal
@@ -181,6 +184,9 @@ export default function AuditEntry() {
         product_id: invProductFilter || undefined,
         category: invCategoryFilter || undefined,
         type: invTypeFilter || undefined,
+        from_party: invFromParty || undefined,
+        to_party: invToParty || undefined,
+        status: invStatusFilter || undefined,
         godown_id: invGodownFilter || undefined,
       };
 
@@ -205,7 +211,7 @@ export default function AuditEntry() {
     } finally {
       setInvLoading(false);
     }
-  }, [invPeriod, invStartDate, invEndDate, debouncedInvSearch, invProductFilter, invCategoryFilter, invTypeFilter, invGodownFilter, invPerPage]);
+  }, [invPeriod, invStartDate, invEndDate, debouncedInvSearch, invProductFilter, invCategoryFilter, invTypeFilter, invFromParty, invToParty, invStatusFilter, invGodownFilter, invPerPage]);
 
   useEffect(() => {
     if (activeAuditTab === 'inventory') {
@@ -327,19 +333,19 @@ export default function AuditEntry() {
       exportToCSV({
         filename: `Inventory_Audit_Transaction_History_${new Date().toISOString().slice(0, 10)}.csv`,
         columns: [
-          { label: 'Transaction Date', key: 'date_formatted' },
+          { label: 'Date', key: 'date_formatted' },
           { label: 'Transaction ID', key: 'transaction_id' },
           { label: 'Product SKU', key: 'product_sku' },
           { label: 'Product Name', key: 'product_name' },
-          { label: 'Category', key: 'category' },
-          { label: 'Unit', key: 'unit' },
-          { label: 'Transaction Type', key: 'type' },
-          { label: 'Reference Number', key: 'reference_number' },
+          { label: 'Movement Type', key: 'movement_type' },
+          { label: 'From', key: 'from' },
+          { label: 'To', key: 'to' },
+          { label: 'Reference', key: 'reference' },
           { label: 'Quantity In', key: 'quantity_in' },
           { label: 'Quantity Out', key: 'quantity_out' },
           { label: 'Adjustments', key: 'adjustments' },
           { label: 'Running Balance', key: 'running_balance' },
-          { label: 'Transaction Status', key: 'status' },
+          { label: 'Status', key: 'status' },
           { label: 'Warehouse', format: (item) => item.godown?.name || '—' },
           { label: 'Created By', key: 'created_by' },
           { label: 'Remarks', key: 'remarks' },
@@ -561,7 +567,7 @@ export default function AuditEntry() {
             </div>
 
             {/* Filter Selectors Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 pt-1">
               <Input
                 placeholder="Search SKU, name, or ref..."
                 value={invSearch}
@@ -571,30 +577,14 @@ export default function AuditEntry() {
                 }}
               />
 
-              <Select
+              <SearchableProductSelect
+                products={productOptions}
                 value={invProductFilter}
-                onChange={(e) => {
-                  setInvProductFilter(e.target.value);
+                onChange={(selectedId) => {
+                  setInvProductFilter(selectedId);
                   setInvPage(1);
                 }}
-                placeholder="All Products (SKU)"
-                options={[
-                  { value: '', label: 'All Products (SKU)' },
-                  ...productOptions.map(p => ({ value: p.id, label: `${p.code} - ${p.name}` }))
-                ]}
-              />
-
-              <Select
-                value={invCategoryFilter}
-                onChange={(e) => {
-                  setInvCategoryFilter(e.target.value);
-                  setInvPage(1);
-                }}
-                placeholder="All Categories"
-                options={[
-                  { value: '', label: 'All Categories' },
-                  ...categoryOptions.map(c => ({ value: c, label: c }))
-                ]}
+                placeholder="All Products (SKU / Name)"
               />
 
               <Select
@@ -603,18 +593,37 @@ export default function AuditEntry() {
                   setInvTypeFilter(e.target.value);
                   setInvPage(1);
                 }}
-                placeholder="All Transaction Types"
+                placeholder="All Movement Types"
                 options={[
-                  { value: '', label: 'All Transaction Types' },
-                  { value: 'OPENING_STOCK', label: 'Opening Stock' },
-                  { value: 'STOCK_ENTRY', label: 'Stock Procurement (Entry)' },
-                  { value: 'TRANSFER_IN', label: 'Transfer In' },
-                  { value: 'TRANSFER_OUT', label: 'Transfer Out' },
-                  { value: 'GODOWN_TO_WORKER', label: 'Godown → Worker' },
-                  { value: 'WORKER_TO_GODOWN', label: 'Worker → Godown' },
-                  { value: 'WORKER_USAGE', label: 'Worker Site Usage' },
-                  { value: 'ADJUSTMENT', label: 'Stock Adjustment' },
+                  { value: '', label: 'All Movement Types' },
+                  { value: 'STOCK_IN', label: 'Stock In (Procurement, Opening)' },
+                  { value: 'STOCK_OUT', label: 'Stock Out (Issued to Employee)' },
+                  { value: 'EMPLOYEE_RETURN', label: 'Employee Return In' },
+                  { value: 'TRANSFER', label: 'Godown Transfers' },
+                  { value: 'ADJUSTMENT', label: 'Adjustments' },
+                  { value: 'OPENING_STOCK', label: 'Opening Stock Baseline' },
+                  { value: 'STOCK_ENTRY', label: 'Procurement Entry' },
+                  { value: 'GODOWN_TO_WORKER', label: 'Godown → Worker Issue' },
+                  { value: 'WORKER_TO_GODOWN', label: 'Worker → Godown Return' },
                 ]}
+              />
+
+              <Input
+                placeholder="From (Source location/party)..."
+                value={invFromParty}
+                onChange={(e) => {
+                  setInvFromParty(e.target.value);
+                  setInvPage(1);
+                }}
+              />
+
+              <Input
+                placeholder="To (Destination party)..."
+                value={invToParty}
+                onChange={(e) => {
+                  setInvToParty(e.target.value);
+                  setInvPage(1);
+                }}
               />
 
               <Select
@@ -694,17 +703,18 @@ export default function AuditEntry() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[11px]">
                     <tr>
-                      <th className="px-4 py-3.5">Date & Time</th>
+                      <th className="px-4 py-3.5">Date</th>
                       <th className="px-4 py-3.5">Transaction ID</th>
                       <th className="px-4 py-3.5">Product SKU</th>
                       <th className="px-4 py-3.5">Product Name</th>
-                      <th className="px-3 py-3.5">Type</th>
-                      <th className="px-4 py-3.5">Reference No.</th>
-                      <th className="px-4 py-3.5 text-right">Qty In (+)</th>
-                      <th className="px-4 py-3.5 text-right">Qty Out (-)</th>
-                      <th className="px-4 py-3.5 text-right">Adjustment</th>
+                      <th className="px-3 py-3.5">Movement Type</th>
+                      <th className="px-4 py-3.5">From</th>
+                      <th className="px-4 py-3.5">To</th>
+                      <th className="px-4 py-3.5">Reference</th>
+                      <th className="px-4 py-3.5 text-right">Quantity In</th>
+                      <th className="px-4 py-3.5 text-right">Quantity Out</th>
                       <th className="px-4 py-3.5 text-right font-bold text-blue-700">Running Balance</th>
                       <th className="px-3 py-3.5 text-center">Status</th>
                       <th className="px-4 py-3.5">Created By</th>
@@ -720,27 +730,35 @@ export default function AuditEntry() {
                         <td className="px-4 py-3.5 font-mono text-xs font-semibold text-slate-900">
                           {tx.transaction_id}
                         </td>
-                        <td className="px-4 py-3.5 font-mono text-xs font-semibold text-blue-600">
+                        <td className="px-4 py-3.5 font-mono text-xs font-semibold text-blue-600 whitespace-nowrap">
                           {tx.product_sku}
                         </td>
                         <td className="px-4 py-3.5 font-medium text-slate-900">
                           {tx.product_name}
                         </td>
                         <td className="px-3 py-3.5 whitespace-nowrap">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                            tx.type === 'STOCK_ENTRY' || tx.type === 'OPENING_STOCK'
+                          <span className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-bold ${
+                            tx.movement_type === 'Stock In'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : tx.type === 'GODOWN_TO_WORKER' || tx.type === 'TRANSFER_OUT' || tx.type === 'WORKER_USAGE'
+                              : tx.movement_type === 'Stock Out'
                               ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : tx.type === 'ADJUSTMENT'
-                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : tx.movement_type === 'Employee Return'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : tx.movement_type === 'Transfer'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-purple-50 text-purple-700 border border-purple-200'
                           }`}>
-                            {tx.type}
+                            {tx.movement_type || tx.type}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 font-mono text-xs text-slate-700 whitespace-nowrap">
-                          {tx.reference_number || '—'}
+                        <td className="px-4 py-3.5 text-slate-700 text-xs font-medium whitespace-nowrap">
+                          {tx.from || '—'}
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-700 text-xs font-medium whitespace-nowrap">
+                          {tx.to || '—'}
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-slate-800 font-semibold whitespace-nowrap">
+                          {tx.reference || tx.reference_number || '—'}
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
                           {tx.quantity_in > 0 ? (
@@ -760,15 +778,6 @@ export default function AuditEntry() {
                             <span className="text-slate-300 font-mono">0</span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                          {tx.adjustments !== 0 ? (
-                            <span className="font-mono font-bold text-purple-700">
-                              {tx.adjustments > 0 ? `+${Number(tx.adjustments).toLocaleString()}` : Number(tx.adjustments).toLocaleString()}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300 font-mono">0</span>
-                          )}
-                        </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap bg-blue-50/20">
                           <span className="font-mono font-black text-sm text-blue-700">
                             {Number(tx.running_balance).toLocaleString()}
@@ -776,8 +785,14 @@ export default function AuditEntry() {
                           <span className="text-[10px] text-slate-400 uppercase">{tx.unit}</span>
                         </td>
                         <td className="px-3 py-3.5 text-center whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            POSTED
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            tx.status === 'APPROVED' || tx.status === 'POSTED'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : tx.status === 'PENDING'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-rose-100 text-rose-800 border border-rose-200'
+                          }`}>
+                            {tx.status || 'POSTED'}
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-slate-600 whitespace-nowrap">

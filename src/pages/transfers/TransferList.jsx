@@ -10,6 +10,7 @@ import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
+import SearchableProductSelect from '../../components/common/SearchableProductSelect';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import Spinner from '../../components/common/Spinner';
@@ -59,7 +60,7 @@ export default function TransferList() {
       try {
         const [gRes, pRes] = await Promise.all([
           godownService.getGodowns({ per_page: 100 }),
-          productService.getProducts({ per_page: 100 }),
+          productService.getProducts({ per_page: 500 }),
         ]);
 
         const allGodowns = gRes.data?.items || [];
@@ -337,16 +338,13 @@ export default function TransferList() {
         subtitle="Transfer goods from a primary godown to a retail godown."
       >
         <form onSubmit={handleSubmitTransfer} className="space-y-4">
-          <Select
+          <SearchableProductSelect
             label="Product"
             name="product_id"
             required
+            products={products}
             value={formData.product_id}
-            onChange={(e) => setFormData({ ...formData, product_id: e.target.value })}
-            options={products.map((p) => ({
-              value: p.id,
-              label: `${p.name} (${p.code})`,
-            }))}
+            onChange={(selectedId) => setFormData({ ...formData, product_id: selectedId })}
           />
 
           <Select
