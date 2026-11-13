@@ -146,6 +146,7 @@ export default function StockOverview() {
     godown_id: '',
     product_id: '',
     quantity: '',
+    unit_price: '',
     internal_location: '',
     remarks: '',
   });
@@ -435,11 +436,13 @@ export default function StockOverview() {
   }, [productOptions, entryProductSearch]);
 
   const handleOpenEntryModal = () => {
+    const firstProduct = productOptions[0];
     setEntryFormData({
       entry_date: new Date().toISOString().split('T')[0],
       godown_id: godownOptions[0]?.id || '',
-      product_id: productOptions[0]?.id || '',
+      product_id: firstProduct?.id || '',
       quantity: '',
+      unit_price: firstProduct?.purchase_rate ? String(firstProduct.purchase_rate) : '',
       internal_location: '',
       remarks: '',
     });
@@ -465,6 +468,9 @@ export default function StockOverview() {
       formData.append('godown_id', entryFormData.godown_id);
       formData.append('product_id', entryFormData.product_id);
       formData.append('quantity', entryFormData.quantity);
+      if (entryFormData.unit_price !== undefined && entryFormData.unit_price !== null && entryFormData.unit_price !== '') {
+        formData.append('unit_price', entryFormData.unit_price);
+      }
       if (entryFormData.internal_location) {
         formData.append('internal_location', entryFormData.internal_location.trim());
       }
@@ -579,6 +585,8 @@ export default function StockOverview() {
             { label: 'Godown', format: (e) => e.godown?.name || 'Godown' },
             { label: 'Location', format: (e) => e.internal_location || '—' },
             { label: 'Quantity', format: (e) => `${e.quantity} ${e.product?.unit || ''}` },
+            { label: 'Buying Price (₹)', format: (e) => e.unit_price ? Number(e.unit_price).toFixed(2) : '—' },
+            { label: 'Total Value (₹)', format: (e) => (e.unit_price && e.quantity) ? (Number(e.unit_price) * Number(e.quantity)).toFixed(2) : '—' },
             { label: 'Requester', format: (e) => e.requester?.name || 'Staff' },
             { label: 'Status', key: 'status' },
             { label: 'Approver', format: (e) => e.approver?.name || '—' },
@@ -1244,6 +1252,7 @@ export default function StockOverview() {
                       <th className="px-5 py-3.5">Godown</th>
                       <th className="px-5 py-3.5">Location</th>
                       <th className="px-5 py-3.5 text-right">Quantity</th>
+                      <th className="px-5 py-3.5 text-right">Buying Price</th>
                       <th className="px-5 py-3.5">Requester</th>
                       <th className="px-5 py-3.5">Status</th>
                       <th className="px-5 py-3.5">Approver</th>
@@ -1273,6 +1282,22 @@ export default function StockOverview() {
                           <td className="px-5 py-3.5 text-slate-500">{entry.internal_location || '—'}</td>
                           <td className="px-5 py-3.5 text-right font-bold text-slate-900">
                             {entry.quantity} {entry.product?.unit}
+                          </td>
+                          <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                            {entry.unit_price ? (
+                              <div>
+                                <span className="font-mono font-bold text-emerald-700">
+                                  ₹{Number(entry.unit_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                {entry.quantity && (
+                                  <span className="block text-[10px] text-slate-400 font-mono">
+                                    Total: ₹{Number(entry.unit_price * entry.quantity).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-mono">—</span>
+                            )}
                           </td>
                           <td className="px-5 py-3.5 text-slate-600">{entry.requester?.name || 'Staff'}</td>
                           <td className="px-5 py-3.5 whitespace-nowrap">
@@ -1749,21 +1774,45 @@ export default function StockOverview() {
             label="Product SKU"
             products={productOptions}
             value={entryFormData.product_id}
-            onChange={(selectedId) => setEntryFormData({ ...entryFormData, product_id: selectedId })}
+            onChange={(selectedId) => {
+              const prod = productOptions.find((p) => String(p.id) === String(selectedId));
+              setEntryFormData({
+                ...entryFormData,
+                product_id: selectedId,
+                unit_price: entryFormData.unit_price || (prod?.purchase_rate ? String(prod.purchase_rate) : ''),
+              });
+            }}
             required
             placeholder="Type 's' or SKU code to filter products dynamically..."
           />
 
-          <Input
-            label="Received Quantity *"
-            type="number"
-            min="0.01"
-            step="0.01"
-            placeholder="e.g. 50"
-            value={entryFormData.quantity}
-            onChange={(e) => setEntryFormData({ ...entryFormData, quantity: e.target.value })}
-            required
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Received Quantity *"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="e.g. 50"
+              value={entryFormData.quantity}
+              onChange={(e) => setEntryFormData({ ...entryFormData, quantity: e.target.value })}
+              required
+            />
+
+            <Input
+              label="Buying Price (per unit) ₹"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 150.00"
+              value={entryFormData.unit_price}
+              onChange={(e) => setEntryFormData({ ...entryFormData, unit_price: e.target.value })}
+              helperText={
+                entryFormData.quantity && entryFormData.unit_price
+                  ? `Total: ₹${(Number(entryFormData.quantity) * Number(entryFormData.unit_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                  : 'Batch purchase price'
+              }
+            />
+          </div>
 
           <Input
             label="Internal Shelf / Bay Location"
@@ -1839,6 +1888,17 @@ export default function StockOverview() {
                 <span className="text-emerald-800">Quantity to Add:</span>
                 <span className="font-bold text-emerald-700 text-sm">
                   +{selectedEntryToApprove.quantity} {selectedEntryToApprove.product?.unit}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-emerald-100">
+                <span className="text-emerald-800">Buying Price (Rate):</span>
+                <span className="font-bold text-emerald-950 font-mono">
+                  {selectedEntryToApprove.unit_price ? `₹${Number(selectedEntryToApprove.unit_price).toFixed(2)} / ${selectedEntryToApprove.product?.unit || 'unit'}` : '—'}
+                  {selectedEntryToApprove.unit_price && selectedEntryToApprove.quantity && (
+                    <span className="text-xs text-emerald-700 font-semibold ml-2">
+                      (Total: ₹{Number(selectedEntryToApprove.unit_price * selectedEntryToApprove.quantity).toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-emerald-100">

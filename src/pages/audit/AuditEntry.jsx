@@ -343,6 +343,8 @@ export default function AuditEntry() {
           { label: 'Reference', key: 'reference' },
           { label: 'Quantity In', key: 'quantity_in' },
           { label: 'Quantity Out', key: 'quantity_out' },
+          { label: 'Unit Price (₹)', format: (item) => item.unit_price ? Number(item.unit_price).toFixed(2) : '—' },
+          { label: 'Total Value (₹)', format: (item) => item.total_price ? Number(item.total_price).toFixed(2) : '—' },
           { label: 'Adjustments', key: 'adjustments' },
           { label: 'Running Balance', key: 'running_balance' },
           { label: 'Status', key: 'status' },
@@ -715,6 +717,7 @@ export default function AuditEntry() {
                       <th className="px-4 py-3.5">Reference</th>
                       <th className="px-4 py-3.5 text-right">Quantity In</th>
                       <th className="px-4 py-3.5 text-right">Quantity Out</th>
+                      <th className="px-4 py-3.5 text-right">Price</th>
                       <th className="px-4 py-3.5 text-right font-bold text-blue-700">Running Balance</th>
                       <th className="px-3 py-3.5 text-center">Status</th>
                       <th className="px-4 py-3.5">Created By</th>
@@ -776,6 +779,22 @@ export default function AuditEntry() {
                             </span>
                           ) : (
                             <span className="text-slate-300 font-mono">0</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          {tx.unit_price ? (
+                            <div>
+                              <span className="font-mono font-bold text-emerald-700">
+                                ₹{Number(tx.unit_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              {tx.total_price ? (
+                                <span className="block text-[10px] text-slate-400 font-mono">
+                                  Total: ₹{Number(tx.total_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 font-mono">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap bg-blue-50/20">
